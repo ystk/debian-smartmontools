@@ -1,0 +1,132 @@
+Author: Matt Taggart <taggart@debian.org>
+Subject: Update cciss examples/docs
+
+Here is a patch that adds examples for cciss to the default smartd.conf
+file and adds some more cciss documentation to the manpages. I think this
+patch gets things to parity with the 3ware documentation with a couple
+minor exceptions
+
+--- a/smartd.8.in
++++ b/smartd.8.in
+@@ -541,10 +541,11 @@ Section below!
+ .B # This is an example smartd startup config file
+ .B # /usr/local/etc/smartd.conf for monitoring three
+ .B # ATA disks, three SCSI disks, six ATA disks
+-.B # behind two 3ware controllers, three SATA disks
+-.B # directly connected to the HighPoint Rocket-
+-.B # RAID controller, two SATA disks connected to
+-.B # the HighPoint RocketRAID controller via a pmport
++.B # behind two 3ware controllers, two disks on a cciss
++.B # controller, three SATA disks directly connected
++.B # to the HighPoint Rocket-RAID controller,
++.B # two SATA disks connected to the HighPoint
++.B # RocketRAID controller via a pmport
+ .B # device, four SATA disks connected to an Areca
+ .B # RAID controller, and one SATA disk.
+ .B #
+@@ -606,6 +607,13 @@ Section below!
+ .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
+ .B #
+ .nf
++.B # Monitor 2 disks connected to the first HP SmartArray controller which
++.B # uses the cciss driver. Start long tests on Sunday nights and short
++.B # self-tests every night and send errors to root
++.B \ \ /dev/cciss/c0d0 -d cciss,0 -a -s (L/../../7/02|S/../.././02) -m root
++.B \ \ /dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
++.B #
++.nf
+ .B # Three SATA disks on a HighPoint RocketRAID controller.
+ .B # Start short self-tests daily between 1-2, 2-3, and
+ .B # 3-4 am.
+@@ -1246,9 +1254,9 @@ is set to the argument of \-M exec, if p
+ .IP \fBSMARTD_DEVICE\fP 4
+ is set to the device path (examples: /dev/hda, /dev/sdb).
+ .IP \fBSMARTD_DEVICETYPE\fP 4
+-is set to the device type (possible values: ata, scsi, 3ware,N,
++is set to the device type (possible values: ata, scsi, 3ware, cciss, N,
+ areca,N, hpt,L/M/N).  Here N=0,...,127 denotes the ATA disk behind a
+-3ware RAID controller and L/M/N denotes the SATA disk behind a
++3ware or cciss RAID controller and L/M/N denotes the SATA disk behind a
+ HighPoint RocketRAID controller.
+ .IP \fBSMARTD_DEVICESTRING\fP 4
+ is set to the device description.  For SMARTD_DEVICETYPE of ata or
+@@ -1676,6 +1684,10 @@ configuration file Directives might be:
+ If you want more frequent information, use:
+ .B -a.
+ 
++.B If a cciss controller is used
++then the corresponding block device (/dev/cciss/c?d?) must be listed,
++along with the \'\-d cciss,N\' Directive (see below).
++
+ .TP
+ .B ADDITIONAL DETAILS ABOUT DEVICESCAN
+ If a non-comment entry in the configuration file is the text
+--- a/smartd.conf
++++ b/smartd.conf
+@@ -86,6 +86,12 @@ DEVICESCAN -n standby -m root -M exec /u
+ # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
+ #/dev/hdc,0 -a -s L/../../2/01
+ #/dev/hdc,1 -a -s L/../../2/03
++#
++# Monitor 2 disks connected to the first HP SmartArray controller which
++# uses the cciss driver. Start long tests on Sunday nights and short
++# self-tests every night and send errors to root
++#/dev/cciss/c0d0 -d cciss,0 -a -s (L/../../7/02|S/../.././02) -m root
++#/dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
+ 
+ # Monitor 3 ATA disks directly connected to a HighPoint RocketRAID. Start long
+ # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
+--- a/smartd.conf.5.in
++++ b/smartd.conf.5.in
+@@ -117,10 +117,11 @@ Section below!
+ .B # This is an example smartd startup config file
+ .B # /usr/local/etc/smartd.conf for monitoring three
+ .B # ATA disks, three SCSI disks, six ATA disks
+-.B # behind two 3ware controllers, three SATA disks
+-.B # directly connected to the HighPoint Rocket-
+-.B # RAID controller, two SATA disks connected to
+-.B # the HighPoint RocketRAID controller via a pmport
++.B # behind two 3ware controllers, two disks on a cciss
++.B # controller, three SATA disks directly connected
++.B # to the HighPoint Rocket-RAID controller,
++.B # two SATA disks connected to the HighPoint
++.B # RocketRAID controller via a pmport
+ .B # device, four SATA disks connected to an Areca
+ .B # RAID controller, and one SATA disk.
+ .B #
+@@ -182,6 +183,13 @@ Section below!
+ .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
+ .B #
+ .nf
++.B # Monitor 2 disks connected to the first HP SmartArray controller which
++.B # uses the cciss driver. Start long tests on Sunday nights and short
++.B # self-tests every night and send errors to root
++.B \ \ /dev/cciss/c0d0 -d cciss,0 -a -s (L/../../7/02|S/../.././02) -m root
++.B \ \ /dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
++.B #
++.nf
+ .B # Three SATA disks on a HighPoint RocketRAID controller.
+ .B # Start short self-tests daily between 1-2, 2-3, and
+ .B # 3-4 am.
+@@ -822,9 +830,9 @@ is set to the argument of \-M exec, if p
+ .IP \fBSMARTD_DEVICE\fP 4
+ is set to the device path (examples: /dev/hda, /dev/sdb).
+ .IP \fBSMARTD_DEVICETYPE\fP 4
+-is set to the device type (possible values: ata, scsi, 3ware,N,
++is set to the device type (possible values: ata, scsi, 3ware,N, cciss,N,
+ areca,N, hpt,L/M/N).  Here N=0,...,127 denotes the ATA disk behind a
+-3ware RAID controller and L/M/N denotes the SATA disk behind a
++3ware or cciss RAID controller and L/M/N denotes the SATA disk behind a
+ HighPoint RocketRAID controller.
+ .IP \fBSMARTD_DEVICESTRING\fP 4
+ is set to the device description.  For SMARTD_DEVICETYPE of ata or
+@@ -1252,6 +1260,9 @@ configuration file Directives might be:
+ If you want more frequent information, use:
+ .B -a.
+ 
++.B If a cciss controller is used
++then the corresponding block device (/dev/cciss/c?d?) must be listed,
++along with the \'\-d cciss,N\' Directive (see below).
+ .TP
+ .B ADDITIONAL DETAILS ABOUT DEVICESCAN
+ If a non-comment entry in the configuration file is the text

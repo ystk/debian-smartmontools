@@ -1,0 +1,4 @@
+etc/smartmontools/run.d
+usr/share/smartmontools
+usr/sbin
+var/lib/smartmontools/
