@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -30,9 +30,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef HAVE_LOCALE_H
-#include <locale.h>
-#endif // #ifdef HAVE_LOCALE_H
 
 #include "int64.h"
 #include "atacmdnames.h"
@@ -40,20 +37,26 @@
 #include "dev_interface.h"
 #include "ataprint.h"
 #include "smartctl.h"
-#include "extern.h"
 #include "utility.h"
 #include "knowndrives.h"
 
-const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3081 2010-04-03 19:39:11Z chrfranke $"
+const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3357 2011-06-06 18:56:55Z chrfranke $"
                                   ATAPRINT_H_CVSID;
 
-// for passing global control variables
-extern smartmonctrl *con;
 
 static const char * infofound(const char *output) {
   return (*output ? output : "[No Information Found]");
 }
 
+// Return true if '-T permissive' is specified,
+// used to ignore missing capabilities
+static bool is_permissive()
+{
+  if (!failuretest_permissive)
+    return false;
+  failuretest_permissive--;
+  return true;
+}
 
 /* For the given Command Register (CR) and Features Register (FR), attempts
  * to construct a string that describes the contents of the Status
@@ -162,11 +165,12 @@ static const char * construct_st_er_desc(
     print_lba=1;
     print_sector=SC;
     break;
-  case 0x25:  /* READ DMA EXT */
+  case 0x25:  // READ DMA EXT
   case 0x26:  // READ DMA QUEUED EXT
   case 0xC7:  // READ DMA QUEUED
-  case 0xC8:  /* READ DMA */
-  case 0xC9:
+  case 0xC8:  // READ DMA (with retries)
+  case 0xC9:  // READ DMA (without retries, obsolete since ATA-5)
+  case 0x60:  // READ FPDMA QUEUED (NCQ)
     error_flag[7] = icrc;
     error_flag[6] = unc;
     error_flag[5] = mc;
@@ -291,13 +295,14 @@ static const char * construct_st_er_desc(
       break;
     }
     break;
-  case 0xCA:  /* WRITE DMA */
-  case 0xCB:
+  case 0xCA:  // WRITE DMA (with retries)
+  case 0xCB:  // WRITE DMA (without retries, obsolete since ATA-5)
   case 0x35:  // WRITE DMA EXT
   case 0x3D:  // WRITE DMA FUA EXT
   case 0xCC:  // WRITE DMA QUEUED
   case 0x36:  // WRITE DMA QUEUED EXT
   case 0x3E:  // WRITE DMA QUEUED FUA EXT
+  case 0x61:  // WRITE FPDMA QUEUED (NCQ)
     error_flag[7] = icrc;
     error_flag[6] = wp;
     error_flag[5] = mc;
@@ -413,74 +418,50 @@ static inline const char * construct_st_er_desc(char * s,
     (const ata_smart_errorlog_error_struct *)0, &data->error);
 }
 
-
-// This returns the capacity of a disk drive and also prints this into
-// a string, using comma separators to make it easier to read.  If the
-// drive doesn't support LBA addressing or has no user writable
-// sectors (eg, CDROM or DVD) then routine returns zero.
-static uint64_t determine_capacity(const ata_identify_device * drive, char * pstring)
-{
-  // get correct character to use as thousands separator
-  const char *separator = ",";
-#ifdef HAVE_LOCALE_H
-  struct lconv *currentlocale=NULL;
-  setlocale (LC_ALL, "");
-  currentlocale=localeconv();
-  if (*(currentlocale->thousands_sep))
-    separator=(char *)currentlocale->thousands_sep;
-#endif // #ifdef HAVE_LOCALE_H
-
-  // get #sectors and turn into bytes
-  uint64_t capacity = get_num_sectors(drive) * 512;
-  uint64_t retval = capacity;
-
-  // print with locale-specific separators (default is comma)
-  int started=0, k=1000000000;
-  uint64_t power_of_ten = k;
-  power_of_ten *= k;
-  
-  for (k=0; k<7; k++) {
-    uint64_t threedigits = capacity/power_of_ten;
-    capacity -= threedigits*power_of_ten;
-    if (started)
-      // we have already printed some digits
-      pstring += sprintf(pstring, "%s%03"PRIu64, separator, threedigits);
-    else if (threedigits || k==6) {
-      // these are the first digits that we are printing
-      pstring += sprintf(pstring, "%"PRIu64, threedigits);
-      started = 1;
-    }
-    if (k!=6)
-      power_of_ten /= 1000;
-  }
-  
-  return retval;
-}
-
-static bool PrintDriveInfo(const ata_identify_device * drive, bool fix_swapped_id)
+static void print_drive_info(const ata_identify_device * drive,
+                             const ata_size_info & sizes,
+                             const drive_settings * dbentry)
 {
   // format drive information (with byte swapping as needed)
-  char model[64], serial[64], firm[64];
-  format_ata_string(model, drive->model, 40, fix_swapped_id);
-  format_ata_string(serial, drive->serial_no, 20, fix_swapped_id);
-  format_ata_string(firm, drive->fw_rev, 8, fix_swapped_id);
-
-  // print out model, serial # and firmware versions  (byte-swap ASCI strings)
-  const drive_settings * dbentry = lookup_drive(model, firm);
+  char model[40+1], serial[20+1], firmware[8+1];
+  ata_format_id_string(model, drive->model, sizeof(model)-1);
+  ata_format_id_string(serial, drive->serial_no, sizeof(serial)-1);
+  ata_format_id_string(firmware, drive->fw_rev, sizeof(firmware)-1);
 
   // Print model family if known
   if (dbentry && *dbentry->modelfamily)
     pout("Model Family:     %s\n", dbentry->modelfamily);
 
   pout("Device Model:     %s\n", infofound(model));
-  if (!con->dont_print_serial)
+  if (!dont_print_serial_number) {
     pout("Serial Number:    %s\n", infofound(serial));
-  pout("Firmware Version: %s\n", infofound(firm));
 
-  char capacity[64];
-  if (determine_capacity(drive, capacity))
-    pout("User Capacity:    %s bytes\n", capacity);
-  
+    unsigned oui = 0; uint64_t unique_id = 0;
+    int naa = ata_get_wwn(drive, oui, unique_id);
+    if (naa >= 0)
+      pout("LU WWN Device Id: %x %06x %09"PRIx64"\n", naa, oui, unique_id);
+  }
+  pout("Firmware Version: %s\n", infofound(firmware));
+
+  if (sizes.capacity) {
+    // Print capacity
+    char num[64], cap[32];
+    pout("User Capacity:    %s bytes [%s]\n",
+      format_with_thousands_sep(num, sizeof(num), sizes.capacity),
+      format_capacity(cap, sizeof(cap), sizes.capacity));
+
+    // Print sector sizes.
+    if (sizes.phy_sector_size == sizes.log_sector_size)
+      pout("Sector Size:      %u bytes logical/physical\n", sizes.log_sector_size);
+    else {
+      pout("Sector Sizes:     %u bytes logical, %u bytes physical",
+         sizes.log_sector_size, sizes.phy_sector_size);
+      if (sizes.log_sector_offset)
+        pout(" (offset %u bytes)", sizes.log_sector_offset);
+      pout("\n");
+    }
+  }
+
   // See if drive is recognized
   pout("Device is:        %s\n", !dbentry ?
        "Not in smartctl database [for details use: -P showall]":
@@ -522,11 +503,10 @@ static bool PrintDriveInfo(const ata_identify_device * drive, bool fix_swapped_i
     pout("\n==> WARNING: %s\n\n", dbentry->warningmsg);
 
   if (!version || version >= 3)
-    return !!dbentry;
+    return;
   
   pout("SMART is only available in ATA Version 3 Revision 3 or greater.\n");
   pout("We will try to proceed in spite of this.\n");
-  return !!dbentry;
 }
 
 static const char *OfflineDataCollectionStatus(unsigned char status_byte)
@@ -664,7 +644,7 @@ static void PrintSmartSelfExecStatus(const ata_smart_values * data,
 static void PrintSmartTotalTimeCompleteOffline (const ata_smart_values * data)
 {
   pout("Total time to complete Offline \n");
-  pout("data collection: \t\t (%4d) seconds.\n", 
+  pout("data collection: \t\t(%5d) seconds.\n", 
        (int)data->total_time_to_complete_off_line);
 }
 
@@ -786,8 +766,7 @@ static int find_failed_attr(const ata_smart_values * data,
   for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
     const ata_smart_attribute & attr = data->vendor_attributes[i];
 
-    ata_attr_state state = ata_get_attr_state(attr,
-                             thresholds->thres_entries[i], defs);
+    ata_attr_state state = ata_get_attr_state(attr, i, thresholds->thres_entries, defs);
 
     if (!onlyfailed) {
       if (state >= ATTRSTATE_FAILED_PAST)
@@ -807,17 +786,17 @@ static int find_failed_attr(const ata_smart_values * data,
 static void PrintSmartAttribWithThres(const ata_smart_values * data,
                                       const ata_smart_thresholds_pvt * thresholds,
                                       const ata_vendor_attr_defs & defs,
-                                      int onlyfailed)
+                                      int onlyfailed, unsigned char format)
 {
   bool needheader = true;
 
   // step through all vendor attributes
   for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
     const ata_smart_attribute & attr = data->vendor_attributes[i];
-    const ata_smart_threshold_entry & thre = thresholds->thres_entries[i];
 
     // Check attribute and threshold
-    ata_attr_state state = ata_get_attr_state(attr, thre, defs);
+    unsigned char threshold = 0;
+    ata_attr_state state = ata_get_attr_state(attr, i, thresholds->thres_entries, defs, &threshold);
     if (state == ATTRSTATE_NON_EXISTING)
       continue;
 
@@ -834,7 +813,10 @@ static void PrintSmartAttribWithThres(const ata_smart_values * data,
         pout("SMART Attributes Data Structure revision number: %d\n",(int)data->revnumber);
         pout("Vendor Specific SMART Attributes with Thresholds:\n");
       }
-      pout("ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE\n");
+      if (format == 0)
+        pout("ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE\n");
+      else
+        pout("ID# ATTRIBUTE_NAME          FLAGS    VALUE WORST THRESH FAIL RAW_VALUE\n");
       needheader = false;
     }
 
@@ -849,31 +831,53 @@ static void PrintSmartAttribWithThres(const ata_smart_values * data,
     else
       worstr = "---";
     if (state > ATTRSTATE_NO_THRESHOLD)
-      threstr = strprintf("%.3d", thre.threshold);
+      threstr = strprintf("%.3d", threshold);
     else
       threstr = "---";
 
     // Print line for each valid attribute
     std::string attrname = ata_get_smart_attr_name(attr.id, defs);
-    pout("%3d %-24s0x%04x   %-3s   %-3s   %-3s    %-10s%-9s%-12s%s\n",
-         attr.id, attrname.c_str(), attr.flags,
-         valstr.c_str(), worstr.c_str(), threstr.c_str(),
-         (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags)? "Pre-fail" : "Old_age"),
-         (ATTRIBUTE_FLAGS_ONLINE(attr.flags)? "Always" : "Offline"),
-         (state == ATTRSTATE_FAILED_NOW  ? "FAILING_NOW" :
-          state == ATTRSTATE_FAILED_PAST ? "In_the_past" :
-                                           "    -"        ),
-         ata_format_attr_raw_value(attr, defs).c_str());
+    std::string rawstr = ata_format_attr_raw_value(attr, defs);
 
-    // Print a warning if there is inconsistency here
-    if (state == ATTRSTATE_BAD_THRESHOLD) {
-      pout("%3d %-24s<== Data Page      |  WARNING: PREVIOUS ATTRIBUTE HAS TWO\n",
-           attr.id, attrname.c_str());
-      pout("%3d %-24s<== Threshold Page |  INCONSISTENT IDENTITIES IN THE DATA\n",
-           thre.id, ata_get_smart_attr_name(thre.id, defs).c_str());
-    }
+    if (format == 0)
+      pout("%3d %-24s0x%04x   %-3s   %-3s   %-3s    %-10s%-9s%-12s%s\n",
+           attr.id, attrname.c_str(), attr.flags,
+           valstr.c_str(), worstr.c_str(), threstr.c_str(),
+           (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags) ? "Pre-fail" : "Old_age"),
+           (ATTRIBUTE_FLAGS_ONLINE(attr.flags)     ? "Always"   : "Offline"),
+           (state == ATTRSTATE_FAILED_NOW  ? "FAILING_NOW" :
+            state == ATTRSTATE_FAILED_PAST ? "In_the_past"
+                                           : "    -"        ) ,
+            rawstr.c_str());
+    else
+      pout("%3d %-24s%c%c%c%c%c%c%c  %-3s   %-3s   %-3s    %-5s%s\n",
+           attr.id, attrname.c_str(),
+           (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags)     ? 'P' : '-'),
+           (ATTRIBUTE_FLAGS_ONLINE(attr.flags)         ? 'O' : '-'),
+           (ATTRIBUTE_FLAGS_PERFORMANCE(attr.flags)    ? 'S' : '-'),
+           (ATTRIBUTE_FLAGS_ERRORRATE(attr.flags)      ? 'R' : '-'),
+           (ATTRIBUTE_FLAGS_EVENTCOUNT(attr.flags)     ? 'C' : '-'),
+           (ATTRIBUTE_FLAGS_SELFPRESERVING(attr.flags) ? 'K' : '-'),
+           (ATTRIBUTE_FLAGS_OTHER(attr.flags)          ? '+' : ' '),
+           valstr.c_str(), worstr.c_str(), threstr.c_str(),
+           (state == ATTRSTATE_FAILED_NOW  ? "NOW"  :
+            state == ATTRSTATE_FAILED_PAST ? "Past"
+                                           : "-"     ),
+            rawstr.c_str());
+
   }
-  if (!needheader) pout("\n");
+
+  if (!needheader) {
+    if (!onlyfailed && format == 1)
+      pout("%28s||||||_ K auto-keep\n"
+           "%28s|||||__ C event count\n"
+           "%28s||||___ R error rate\n"
+           "%28s|||____ S speed/performance\n"
+           "%28s||_____ O updated online\n"
+           "%28s|______ P prefailure warning\n",
+           "", "", "", "", "", "");
+    pout("\n");
+  }
 }
 
 // Print SMART related SCT capabilities
@@ -942,7 +946,7 @@ static unsigned GetNumLogSectors(const ata_smart_log_directory * logdir, unsigne
 }
 
 // Get name of log.
-// Table A.2 of T13/1699-D Revision 6
+// Table A.2 of T13/2015-D Revision 4a (ACS-2), December 9, 2010.
 static const char * GetLogName(unsigned logaddr)
 {
     switch (logaddr) {
@@ -951,9 +955,12 @@ static const char * GetLogName(unsigned logaddr)
       case 0x02: return "Comprehensive SMART error log";
       case 0x03: return "Ext. Comprehensive SMART error log";
       case 0x04: return "Device Statistics";
+      case 0x05: return "Reserved for the CFA"; // ACS-2
       case 0x06: return "SMART self-test log";
       case 0x07: return "Extended self-test log";
+      case 0x08: return "Power Conditions"; // ACS-2
       case 0x09: return "Selective self-test log";
+      case 0x0d: return "LPS Mis-alignment log"; // ACS-2
       case 0x10: return "NCQ Command Error";
       case 0x11: return "SATA Phy Event Counters";
       case 0x20: return "Streaming performance log"; // Obsolete
@@ -1129,7 +1136,7 @@ static int PrintSmartErrorlog(const ata_smart_errorlog *data,
     pout("No Errors Logged\n\n");
     return 0;
   }
-  PRINT_ON(con);
+  print_on();
   // If log pointer out of range, return
   if (data->error_log_pointer>5){
     pout("Invalid Error Log index = 0x%02x (T13/1321D rev 1c "
@@ -1150,7 +1157,7 @@ static int PrintSmartErrorlog(const ata_smart_errorlog *data,
   else
     pout( "ATA Error Count: %d (device log contains only the most recent five errors)\n",
            (int)data->ata_error_count);
-  PRINT_OFF(con);
+  print_off();
   pout("\tCR = Command Register [HEX]\n"
        "\tFR = Features Register [HEX]\n"
        "\tSC = Sector Count Register [HEX]\n"
@@ -1180,10 +1187,10 @@ static int PrintSmartErrorlog(const ata_smart_errorlog *data,
       int days = (int)summary->timestamp/24;
 
       // See table 42 of ATA5 spec
-      PRINT_ON(con);
+      print_on();
       pout("Error %d occurred at disk power-on lifetime: %d hours (%d days + %d hours)\n",
              (int)(data->ata_error_count+k-4), (int)summary->timestamp, days, (int)(summary->timestamp-24*days));
-      PRINT_OFF(con);
+      print_off();
       pout("  When the command that caused the error occurred, the device was %s.\n\n",msgstate);
       pout("  After command completion occurred, registers were:\n"
            "  ER ST SC SN CL CH DH\n"
@@ -1232,10 +1239,10 @@ static int PrintSmartErrorlog(const ata_smart_errorlog *data,
       pout("\n");
     }
   }
-  PRINT_ON(con);
-  if (con->printing_switchable)
+  print_on();
+  if (printing_is_switchable)
     pout("\n");
-  PRINT_OFF(con);
+  print_off();
   return data->ata_error_count;  
 }
 
@@ -1250,7 +1257,7 @@ static int PrintSmartExtErrorLog(const ata_smart_exterrlog * log,
     pout("No Errors Logged\n\n");
     return 0;
   }
-  PRINT_ON(con);
+  print_on();
 
   // Check index
   unsigned nentries = nsectors * 4;
@@ -1285,7 +1292,7 @@ static int PrintSmartExtErrorLog(const ata_smart_exterrlog * log,
   if (max_errors < errcnt)
     errcnt = max_errors;
 
-  PRINT_OFF(con);
+  print_off();
   pout("\tCR     = Command Register\n"
        "\tFEATR  = Features Register\n"
        "\tCOUNT  = Count (was: Sector Count) Register\n"
@@ -1314,11 +1321,11 @@ static int PrintSmartExtErrorLog(const ata_smart_exterrlog * log,
     }
 
     // Print error information
-    PRINT_ON(con);
+    print_on();
     const ata_smart_exterrlog_error & err = entry.error;
     pout("Error %u [%u] occurred at disk power-on lifetime: %u hours (%u days + %u hours)\n",
          errnum, erridx, err.timestamp, err.timestamp / 24, err.timestamp % 24);
-    PRINT_OFF(con);
+    print_off();
 
     pout("  When the command that caused the error occurred, the device was %s.\n\n",
       get_error_log_state_desc(err.state));
@@ -1384,23 +1391,23 @@ static int PrintSmartExtErrorLog(const ata_smart_exterrlog * log,
     pout("\n");
   }
 
-  PRINT_ON(con);
-  if (con->printing_switchable)
+  print_on();
+  if (printing_is_switchable)
     pout("\n");
-  PRINT_OFF(con);
+  print_off();
   return log->device_error_count;
 }
 
 // Print SMART Extended Self-test Log (GP Log 0x07)
-static bool PrintSmartExtSelfTestLog(const ata_smart_extselftestlog * log,
-                                     unsigned nsectors, unsigned max_entries)
+static int PrintSmartExtSelfTestLog(const ata_smart_extselftestlog * log,
+                                    unsigned nsectors, unsigned max_entries)
 {
   pout("SMART Extended Self-test Log Version: %u (%u sectors)\n",
        log->version, nsectors);
 
   if (!log->log_desc_index){
     pout("No self-tests have been logged.  [To run self-tests, use: smartctl -t]\n\n");
-    return true;
+    return 0;
   }
 
   // Check index
@@ -1408,7 +1415,7 @@ static bool PrintSmartExtSelfTestLog(const ata_smart_extselftestlog * log,
   unsigned logidx = log->log_desc_index;
   if (logidx > nentries) {
     pout("Invalid Self-test Log index = 0x%04x (reserved = 0x%02x)\n", logidx, log->reserved1);
-    return false;
+    return 0;
   }
 
   // Index base is not clearly specified by ATA8-ACS (T13/1699-D Revision 6a),
@@ -1416,6 +1423,8 @@ static bool PrintSmartExtSelfTestLog(const ata_smart_extselftestlog * log,
   logidx--;
 
   bool print_header = true;
+  int errcnt = 0, igncnt = 0;
+  int ext_ok_testnum = -1;
 
   // Iterate through circular buffer in reverse direction
   for (unsigned i = 0, testnum = 1;
@@ -1438,12 +1447,31 @@ static bool PrintSmartExtSelfTestLog(const ata_smart_extselftestlog * log,
         | ((uint64_t)b[5] << 40);
 
     // Print entry
-    ataPrintSmartSelfTestEntry(testnum++, entry.self_test_type,
+    int state = ataPrintSmartSelfTestEntry(testnum, entry.self_test_type,
       entry.self_test_status, entry.timestamp, lba48,
       false /*!print_error_only*/, print_header);
+
+    if (state < 0) {
+      // Self-test showed an error
+      if (ext_ok_testnum < 0)
+        errcnt++;
+      else
+        // Newer successful extended self-test exits
+        igncnt++;
+    }
+    else if (state > 0 && ext_ok_testnum < 0) {
+      // Latest successful extended self-test
+      ext_ok_testnum = testnum;
+    }
+    testnum++;
   }
+
+  if (igncnt)
+    pout("%d of %d failed self-tests are outdated by newer successful extended offline self-test #%2d\n",
+      igncnt, igncnt+errcnt, ext_ok_testnum);
+
   pout("\n");
-  return true;
+  return errcnt;
 }
 
 static void ataPrintSelectiveSelfTestLog(const ata_selective_self_test_log * log, const ata_smart_values * sv)
@@ -1702,9 +1730,9 @@ static int ataPrintSCTTempHist(const ata_sct_temperature_history_table * tmh)
 }
 
 // Print SCT Error Recovery Control timers
-static void ataPrintSCTErrorRecoveryControl(unsigned short read_timer, unsigned short write_timer)
+static void ataPrintSCTErrorRecoveryControl(bool set, unsigned short read_timer, unsigned short write_timer)
 {
-  pout("SCT Error Recovery Control:\n");
+  pout("SCT Error Recovery Control%s:\n", (set ? " set to" : ""));
   if (!read_timer)
     pout("           Read: Disabled\n");
   else
@@ -1716,35 +1744,8 @@ static void ataPrintSCTErrorRecoveryControl(unsigned short read_timer, unsigned 
 }
 
 
-// Compares failure type to policy in effect, and either exits or
-// simply returns to the calling routine.
-void failuretest(int type, int returnvalue){
-
-  // If this is an error in an "optional" SMART command
-  if (type==OPTIONAL_CMD){
-    if (con->conservative){
-      pout("An optional SMART command failed: exiting.  Remove '-T conservative' option to continue.\n");
-      EXIT(returnvalue);
-    }
-    return;
-  }
-
-  // If this is an error in a "mandatory" SMART command
-  if (type==MANDATORY_CMD){
-    if (con->permissive--)
-      return;
-    pout("A mandatory SMART command failed: exiting. To continue, add one or more '-T permissive' options.\n");
-    EXIT(returnvalue);
-  }
-
-  pout("Smartctl internal error in failuretest(type=%d). Please contact developers at " PACKAGE_HOMEPAGE "\n",type);
-  EXIT(returnvalue|FAILCMD);
-}
-
 int ataPrintMain (ata_device * device, const ata_print_options & options)
 {
-  int returnval = 0;
-
   // If requested, check power mode first
   const char * powername = 0;
   bool powerchg = false;
@@ -1753,8 +1754,8 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     int powermode = ataCheckPowerMode(device);
     switch (powermode) {
       case -1:
-        if (errno == ENOSYS) {
-          pout("CHECK POWER STATUS not implemented, ignoring -n Option\n"); break;
+        if (device->get_errno() == ENOSYS) {
+          pout("CHECK POWER MODE not implemented, ignoring -n option\n"); break;
         }
         powername = "SLEEP";   powerlimit = 2;
         break;
@@ -1765,7 +1766,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       case 0xff:
         powername = "ACTIVE or IDLE"; break;
       default:
-        pout("CHECK POWER STATUS returned %d, not ATA compliant, ignoring -n Option\n", powermode);
+        pout("CHECK POWER MODE returned unknown value 0x%02x, ignoring -n option\n", powermode);
         break;
     }
     if (powername) {
@@ -1806,31 +1807,82 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
        || options.smart_disable
   );
 
+  // SMART and GP log directories needed ?
+  bool need_smart_logdir = options.smart_logdir;
+
+  bool need_gp_logdir  = (
+          options.gp_logdir
+       || options.smart_ext_error_log
+       || options.smart_ext_selftest_log
+       || options.sataphy
+  );
+
+  unsigned i;
+  for (i = 0; i < options.log_requests.size(); i++) {
+    if (options.log_requests[i].gpl)
+      need_gp_logdir = true;
+    else
+      need_smart_logdir = true;
+  }
+
+  // SCT commands needed ?
+  bool need_sct_support = (
+          options.sct_temp_sts
+       || options.sct_temp_hist
+       || options.sct_temp_int
+       || options.sct_erc_get
+       || options.sct_erc_set
+  );
+
+  // Exit if no further options specified
+  if (!(   options.drive_info || need_smart_support
+        || need_smart_logdir  || need_gp_logdir
+        || need_sct_support                        )) {
+    if (powername)
+      pout("Device is in %s mode\n", powername);
+    else
+      pout("ATA device successfully opened\n\n"
+           "Use 'smartctl -a' (or '-x') to print SMART (and more) information\n\n");
+    return 0;
+  }
+
   // Start by getting Drive ID information.  We need this, to know if SMART is supported.
+  int returnval = 0;
   ata_identify_device drive; memset(&drive, 0, sizeof(drive));
-  int retid = ataReadHDIdentity(device,&drive);
+  device->clear_err();
+  int retid = ata_read_identity(device, &drive, options.fix_swapped_id);
   if (retid < 0) {
-    pout("Smartctl: Device Read Identity Failed (not an ATA/ATAPI device)\n\n");
+    pout("Smartctl: Device Read Identity Failed: %s\n\n",
+         (device->get_errno() ? device->get_errmsg() : "Unknown error"));
+    failuretest(MANDATORY_CMD, returnval|=FAILID);
+  }
+  else if (!nonempty(&drive, sizeof(drive))) {
+    pout("Smartctl: Device Read Identity Failed: empty IDENTIFY data\n\n");
     failuretest(MANDATORY_CMD, returnval|=FAILID);
   }
 
   // If requested, show which presets would be used for this drive and exit.
   if (options.show_presets) {
-    show_presets(&drive, options.fix_swapped_id);
+    show_presets(&drive);
     return 0;
   }
 
   // Use preset vendor attribute options unless user has requested otherwise.
   ata_vendor_attr_defs attribute_defs = options.attribute_defs;
   unsigned char fix_firmwarebug = options.fix_firmwarebug;
+  const drive_settings * dbentry = 0;
   if (!options.ignore_presets)
-    apply_presets(&drive, attribute_defs, fix_firmwarebug, options.fix_swapped_id);
+    dbentry = lookup_drive_apply_presets(&drive, attribute_defs,
+      fix_firmwarebug);
+
+  // Get capacity and sector sizes
+  ata_size_info sizes;
+  ata_get_size_info(&drive, sizes);
 
   // Print most drive identity information if requested
-  bool known = false;
   if (options.drive_info) {
     pout("=== START OF INFORMATION SECTION ===\n");
-    known = PrintDriveInfo(&drive, options.fix_swapped_id);
+    print_drive_info(&drive, sizes, dbentry);
   }
 
   // Check and print SMART support and state
@@ -1859,7 +1911,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
             smart_supported = smart_enabled = 1;
         }
       }
-      else if (smart_supported < 0 && (smart_enabled > 0 || known))
+      else if (smart_supported < 0 && (smart_enabled > 0 || dbentry))
         // Assume supported if enabled or in drive database
         smart_supported = 1;
 
@@ -2034,9 +2086,9 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
         if (options.smart_vendor_attrib)
           pout("See vendor-specific Attribute list for marginal Attributes.\n\n");
         else {
-          PRINT_ON(con);
+          print_on();
           pout("Please note the following marginal Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2, options.output_format);
         } 
         returnval|=FAILAGE;
       }
@@ -2046,24 +2098,24 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       
     case 1:
       // The case where the disk health is NOT OK
-      PRINT_ON(con);
+      print_on();
       pout("SMART overall-health self-assessment test result: FAILED!\n"
            "Drive failure expected in less than 24 hours. SAVE ALL DATA.\n");
-      PRINT_OFF(con);
+      print_off();
       if (smart_thres_ok && find_failed_attr(&smartval, &smartthres, attribute_defs, 1)) {
         returnval|=FAILATTR;
         if (options.smart_vendor_attrib)
           pout("See vendor-specific Attribute list for failed Attributes.\n\n");
         else {
-          PRINT_ON(con);
+          print_on();
           pout("Failed Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1, options.output_format);
         }
       }
       else
         pout("No failed Attributes found.\n\n");   
       returnval|=FAILSTATUS;
-      PRINT_OFF(con);
+      print_off();
       break;
 
     case -1:
@@ -2074,23 +2126,23 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       // return the registers values.
       failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
       if (!(smart_val_ok && smart_thres_ok)) {
-        PRINT_ON(con);
+        print_on();
         pout("SMART overall-health self-assessment test result: UNKNOWN!\n"
              "SMART Status, Attributes and Thresholds cannot be read.\n\n");
       }
       else if (find_failed_attr(&smartval, &smartthres, attribute_defs, 1)) {
-        PRINT_ON(con);
+        print_on();
         pout("SMART overall-health self-assessment test result: FAILED!\n"
              "Drive failure expected in less than 24 hours. SAVE ALL DATA.\n");
-        PRINT_OFF(con);
+        print_off();
         returnval|=FAILATTR;
         returnval|=FAILSTATUS;
         if (options.smart_vendor_attrib)
           pout("See vendor-specific Attribute list for failed Attributes.\n\n");
         else {
-          PRINT_ON(con);
+          print_on();
           pout("Failed Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1, options.output_format);
         }
       }
       else {
@@ -2100,20 +2152,20 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
           if (options.smart_vendor_attrib)
             pout("See vendor-specific Attribute list for marginal Attributes.\n\n");
           else {
-            PRINT_ON(con);
+            print_on();
             pout("Please note the following marginal Attributes:\n");
-            PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2);
+            PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2, options.output_format);
           } 
           returnval|=FAILAGE;
         }
         else
           pout("\n");
       } 
-      PRINT_OFF(con);
+      print_off();
       break;
     } // end of switch statement
     
-    PRINT_OFF(con);
+    print_off();
   } // end of checking SMART Status
   
   // Print general SMART values
@@ -2122,113 +2174,93 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
 
   // Print vendor-specific attributes
   if (smart_val_ok && options.smart_vendor_attrib) {
-    PRINT_ON(con);
+    print_on();
     PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs,
-                              (con->printing_switchable ? 2 : 0));
-    PRINT_OFF(con);
+                              (printing_is_switchable ? 2 : 0), options.output_format);
+    print_off();
   }
 
-  // Print SMART and/or GP log Directory and/or logs
-  // Get #pages for extended SMART logs
+  // If GP Log is supported use smart log directory for
+  // error and selftest log support check.
+  if (   isGeneralPurposeLoggingCapable(&drive)
+      && (   options.smart_error_log || options.smart_selftest_log
+          || options.retry_error_log || options.retry_selftest_log))
+    need_smart_logdir = true;
+
   ata_smart_log_directory smartlogdir_buf, gplogdir_buf;
   const ata_smart_log_directory * smartlogdir = 0, * gplogdir = 0;
 
-  if (   options.gp_logdir
-      || options.smart_logdir
-      || options.smart_ext_error_log
-      || options.smart_ext_selftest_log
-      || options.sataphy
-      || !options.log_requests.empty() ) {
-    if (isGeneralPurposeLoggingCapable(&drive))
-      pout("General Purpose Logging (GPL) feature set supported\n");
+  // Read SMART Log directory
+  if (need_smart_logdir) {
+    if (ataReadLogDirectory(device, &smartlogdir_buf, false)) {
+      pout("Read SMART Log Directory failed.\n\n");
+      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+    }
+    else
+      smartlogdir = &smartlogdir_buf;
+  }
 
-    // Detect directories needed
-    bool need_smart_logdir = options.smart_logdir;
-    bool need_gp_logdir    = (   options.gp_logdir
-                              || options.smart_ext_error_log
-                              || options.smart_ext_selftest_log
-                              || options.sataphy               );
-    unsigned i;
-    for (i = 0; i < options.log_requests.size(); i++) {
-      if (options.log_requests[i].gpl)
-        need_gp_logdir = true;
-      else
-        need_smart_logdir = true;
+  // Read GP Log directory
+  if (need_gp_logdir) {
+    if (ataReadLogDirectory(device, &gplogdir_buf, true)) {
+      pout("Read GP Log Directory failed.\n\n");
+      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+    }
+    else
+      gplogdir = &gplogdir_buf;
+  }
+
+  // Print log directories
+  if ((options.gp_logdir && gplogdir) || (options.smart_logdir && smartlogdir))
+    PrintLogDirectories(gplogdir, smartlogdir);
+
+  // Print log pages
+  for (i = 0; i < options.log_requests.size(); i++) {
+    const ata_log_request & req = options.log_requests[i];
+
+    const char * type;
+    unsigned max_nsectors;
+    if (req.gpl) {
+      type = "General Purpose";
+      max_nsectors = GetNumLogSectors(gplogdir, req.logaddr, true);
+    }
+    else {
+      type = "SMART";
+      max_nsectors = GetNumLogSectors(smartlogdir, req.logaddr, false);
     }
 
-    // Read SMART Log directory
-    if (need_smart_logdir) {
-      if (ataReadLogDirectory(device, &smartlogdir_buf, false)){
-        pout("Read SMART Log Directory failed.\n\n");
-        failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
-      }
-      else
-        smartlogdir = &smartlogdir_buf;
-    }
-
-    // Read GP Log directory
-    if (need_gp_logdir) {
-      if (ataReadLogDirectory(device, &gplogdir_buf, true)){
-        pout("Read GP Log Directory failed.\n\n");
-        failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
-      }
-      else
-        gplogdir = &gplogdir_buf;
-    }
-
-    // Print log directories
-    if ((options.gp_logdir && gplogdir) || (options.smart_logdir && smartlogdir))
-      PrintLogDirectories(gplogdir, smartlogdir);
-
-    // Print log pages
-    for (i = 0; i < options.log_requests.size(); i++) {
-      const ata_log_request & req = options.log_requests[i];
-
-      const char * type;
-      unsigned max_nsectors;
-      if (req.gpl) {
-        type = "General Purpose";
-        max_nsectors = GetNumLogSectors(gplogdir, req.logaddr, true);
-      }
-      else {
-        type = "SMART";
-        max_nsectors = GetNumLogSectors(smartlogdir, req.logaddr, false);
-      }
-
-      if (!max_nsectors) {
-        if (!con->permissive) {
-          pout("%s Log 0x%02x does not exist (override with '-T permissive' option)\n", type, req.logaddr);
-          continue;
-        }
-        con->permissive--;
-        max_nsectors = req.page+1;
-      }
-      if (max_nsectors <= req.page) {
-        pout("%s Log 0x%02x has only %u sectors, output skipped\n", type, req.logaddr, max_nsectors);
+    if (!max_nsectors) {
+      if (!is_permissive()) {
+        pout("%s Log 0x%02x does not exist (override with '-T permissive' option)\n", type, req.logaddr);
         continue;
       }
-
-      unsigned ns = req.nsectors;
-      if (ns > max_nsectors - req.page) {
-        if (req.nsectors != ~0U) // "FIRST-max"
-          pout("%s Log 0x%02x has only %u sectors, output truncated\n", type, req.logaddr, max_nsectors);
-        ns = max_nsectors - req.page;
-      }
-
-      // SMART log don't support sector offset, start with first sector
-      unsigned offs = (req.gpl ? 0 : req.page);
-
-      raw_buffer log_buf((offs + ns) * 512);
-      bool ok;
-      if (req.gpl)
-        ok = ataReadLogExt(device, req.logaddr, 0x00, req.page, log_buf.data(), ns);
-      else
-        ok = ataReadSmartLog(device, req.logaddr, log_buf.data(), offs + ns);
-      if (!ok)
-        failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
-      else
-        PrintLogPages(type, log_buf.data() + offs*512, req.logaddr, req.page, ns, max_nsectors);
+      max_nsectors = req.page+1;
     }
+    if (max_nsectors <= req.page) {
+      pout("%s Log 0x%02x has only %u sectors, output skipped\n", type, req.logaddr, max_nsectors);
+      continue;
+    }
+
+    unsigned ns = req.nsectors;
+    if (ns > max_nsectors - req.page) {
+      if (req.nsectors != ~0U) // "FIRST-max"
+        pout("%s Log 0x%02x has only %u sectors, output truncated\n", type, req.logaddr, max_nsectors);
+      ns = max_nsectors - req.page;
+    }
+
+    // SMART log don't support sector offset, start with first sector
+    unsigned offs = (req.gpl ? 0 : req.page);
+
+    raw_buffer log_buf((offs + ns) * 512);
+    bool ok;
+    if (req.gpl)
+      ok = ataReadLogExt(device, req.logaddr, 0x00, req.page, log_buf.data(), ns);
+    else
+      ok = ataReadSmartLog(device, req.logaddr, log_buf.data(), offs + ns);
+    if (!ok)
+      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+    else
+      PrintLogPages(type, log_buf.data() + offs*512, req.logaddr, req.page, ns, max_nsectors);
   }
 
   // Print SMART Extendend Comprehensive Error Log
@@ -2246,7 +2278,8 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       if (!ataReadExtErrorLog(device, log_03, nsectors))
         failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
       else {
-        PrintSmartExtErrorLog(log_03, nsectors, options.smart_ext_error_log);
+        if (PrintSmartExtErrorLog(log_03, nsectors, options.smart_ext_error_log))
+          returnval |= FAILERR;
         ok = true;
       }
     }
@@ -2261,20 +2294,23 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
 
   // Print SMART error log
   if (do_smart_error_log) {
-    if (!isSmartErrorLogCapable(&smartval, &drive)){
-      pout("Warning: device does not support Error Logging\n");
-      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
-    }
-    ata_smart_errorlog smarterror; memset(&smarterror, 0, sizeof(smarterror));
-    if (ataReadErrorLog(device, &smarterror, fix_firmwarebug)){
-      pout("Smartctl: SMART Error Log Read Failed\n");
-      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+    if (!(   ( smartlogdir && GetNumLogSectors(smartlogdir, 0x01, false))
+          || (!smartlogdir && isSmartErrorLogCapable(&smartval, &drive) )
+          || is_permissive()                                             )) {
+      pout("SMART Error Log not supported\n");
     }
     else {
-      // quiet mode is turned on inside ataPrintSmartErrorLog()
-      if (PrintSmartErrorlog(&smarterror, fix_firmwarebug))
-	returnval|=FAILERR;
-      PRINT_OFF(con);
+      ata_smart_errorlog smarterror; memset(&smarterror, 0, sizeof(smarterror));
+      if (ataReadErrorLog(device, &smarterror, fix_firmwarebug)) {
+        pout("Smartctl: SMART Error Log Read Failed\n");
+        failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+      }
+      else {
+        // quiet mode is turned on inside PrintSmartErrorLog()
+        if (PrintSmartErrorlog(&smarterror, fix_firmwarebug))
+	  returnval|=FAILERR;
+        print_off();
+      }
     }
   }
 
@@ -2293,10 +2329,9 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       if (!ataReadExtSelfTestLog(device, log_07, nsectors))
         failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
       else {
-        if (!PrintSmartExtSelfTestLog(log_07, nsectors, options.smart_ext_selftest_log))
+        if (PrintSmartExtSelfTestLog(log_07, nsectors, options.smart_ext_selftest_log))
           returnval |= FAILLOG;
-        else
-          ok = true;
+        ok = true;
       }
     }
 
@@ -2310,21 +2345,24 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
 
   // Print SMART self-test log
   if (do_smart_selftest_log) {
-    if (!isSmartTestLogCapable(&smartval, &drive)){
-      pout("Warning: device does not support Self Test Logging\n");
-      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
-    }    
-    ata_smart_selftestlog smartselftest; memset(&smartselftest, 0, sizeof(smartselftest));
-    if(ataReadSelfTestLog(device, &smartselftest, fix_firmwarebug)){
-      pout("Smartctl: SMART Self Test Log Read Failed\n");
-      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+    if (!(   ( smartlogdir && GetNumLogSectors(smartlogdir, 0x06, false))
+          || (!smartlogdir && isSmartTestLogCapable(&smartval, &drive)  )
+          || is_permissive()                                             )) {
+      pout("SMART Self-test Log not supported\n");
     }
     else {
-      PRINT_ON(con);
-      if (ataPrintSmartSelfTestlog(&smartselftest, !con->printing_switchable, fix_firmwarebug))
-	returnval|=FAILLOG;
-      PRINT_OFF(con);
-      pout("\n");
+      ata_smart_selftestlog smartselftest; memset(&smartselftest, 0, sizeof(smartselftest));
+      if (ataReadSelfTestLog(device, &smartselftest, fix_firmwarebug)) {
+        pout("Smartctl: SMART Self Test Log Read Failed\n");
+        failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+      }
+      else {
+        print_on();
+        if (ataPrintSmartSelfTestlog(&smartselftest, !printing_is_switchable, fix_firmwarebug))
+          returnval |= FAILLOG;
+        print_off();
+        pout("\n");
+      }
     }
   }
 
@@ -2339,20 +2377,20 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
     }
     else {
-      PRINT_ON(con);
+      print_on();
       // If any errors were found, they are logged in the SMART Self-test log.
       // So there is no need to print the Selective Self Test log in silent
       // mode.
-      if (!con->printing_switchable) ataPrintSelectiveSelfTestLog(&log, &smartval);
-      PRINT_OFF(con);
+      if (!printing_is_switchable)
+        ataPrintSelectiveSelfTestLog(&log, &smartval);
+      print_off();
       pout("\n");
     }
   }
 
   // SCT commands
   bool sct_ok = false;
-  if (   options.sct_temp_sts || options.sct_temp_hist || options.sct_temp_int
-      || options.sct_erc_get  || options.sct_erc_set                          ) {
+  if (need_sct_support) {
     if (!isSCTCapable(&drive)) {
       pout("Warning: device does not support SCT Commands\n");
       failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
@@ -2424,12 +2462,15 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
         if (   ataSetSCTErrorRecoveryControltime(device, 1, options.sct_erc_readtime )
             || ataSetSCTErrorRecoveryControltime(device, 2, options.sct_erc_writetime)) {
           pout("Warning: device does not support SCT (Set) Error Recovery Control command\n");
-          pout("Suggest common arguments: scterc,70,70 to enable ERC or sct,0,0 to disable\n");
+          if (!(   (options.sct_erc_readtime == 70 && options.sct_erc_writetime == 70)
+                || (options.sct_erc_readtime ==  0 && options.sct_erc_writetime ==  0)))
+            pout("Retry with: 'scterc,70,70' to enable ERC or 'scterc,0,0' to disable\n");
           failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
           sct_erc_get = false;
         }
-        else
-          sct_erc_get = true;
+        else if (!sct_erc_get)
+          ataPrintSCTErrorRecoveryControl(true, options.sct_erc_readtime,
+            options.sct_erc_writetime);
       }
 
       if (sct_erc_get) {
@@ -2438,12 +2479,15 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
         if (   ataGetSCTErrorRecoveryControltime(device, 1, read_timer )
             || ataGetSCTErrorRecoveryControltime(device, 2, write_timer)) {
           pout("Warning: device does not support SCT (Get) Error Recovery Control command\n");
-          if (options.sct_erc_set)
+          if (options.sct_erc_set) {
             pout("The previous SCT (Set) Error Recovery Control command succeeded\n");
+            ataPrintSCTErrorRecoveryControl(true, options.sct_erc_readtime,
+              options.sct_erc_writetime);
+          }
           failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
         }
         else
-          ataPrintSCTErrorRecoveryControl(read_timer, write_timer);
+          ataPrintSCTErrorRecoveryControl(false, read_timer, write_timer);
       }
       pout("\n");
     }
@@ -2504,15 +2548,13 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     }
     break;
   default:
-    pout("Internal error in smartctl: smart_test_type==%d not recognized\n", options.smart_selftest_type);
-    pout("Please contact smartmontools developers at %s.\n", PACKAGE_BUGREPORT);
-    EXIT(returnval|=FAILCMD);
+    break; // Vendor specific type
   }
 
   // Now do the test.  Note ataSmartTest prints its own error/success
   // messages
   if (ataSmartTest(device, options.smart_selftest_type, options.smart_selective_args,
-                   &smartval, get_num_sectors(&drive)                                ))
+                   &smartval, sizes.sectors                                          ))
     failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
   else {  
     // Tell user how long test will take to complete.  This is tricky

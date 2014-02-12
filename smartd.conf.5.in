@@ -1,7 +1,7 @@
 .ig
 Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
 
-$Id: smartd.conf.5.in 3117 2010-06-08 15:41:04Z chrfranke $
+$Id: smartd.conf.5.in 3284 2011-03-04 21:33:35Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the Free
@@ -176,10 +176,17 @@ Section below!
 .B #
 .nf
 .B # Two ATA disks on a 3ware 9000 controller.
-.B # Start long self-tests Sundays between  midnight and 
+.B # Start long self-tests Sundays between midnight and
 .B # 1am and 2-3 am
 .B \ \ /dev/twa0 -d 3ware,0 -a -s L/../../7/00
 .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
+.B #
+.nf
+.B # Two SATA (not SAS) disks on a 3ware 9750 controller.
+.B # Start long self-tests Sundays between midnight and
+.B # 1am and 2-3 am
+.B \ \ /dev/twl0 -d 3ware,0 -a -s L/../../7/00
+.B \ \ /dev/twl0 -d 3ware,1 -a -s L/../../7/02
 .B #
 .nf
 .B # Three SATA disks on a HighPoint RocketRAID controller.
@@ -271,11 +278,11 @@ indicates a disk failure or problem, if the SCSI inquiry about disk
 status fails, or if new errors appear in the self-test log.
 
 .B If a 3ware controller is used
-then the corresponding SCSI (/dev/sd?) or character device (/dev/twe?
-or /dev/twa?) must be listed, along with the \'\-d 3ware,N\' Directive
-(see below).  The individual ATA disks hosted by the 3ware controller
-appear to \fBsmartd\fP as normal ATA devices.  Hence all the ATA
-directives can be used for these disks (but see note below).
+then the corresponding SCSI (/dev/sd?) or character device (/dev/twe?,
+/dev/twa? or /dev/twl?) must be listed, along with the \'\-d 3ware,N\'
+Directive (see below).  The individual ATA disks hosted by the 3ware
+controller appear to \fBsmartd\fP as normal ATA devices.  Hence all
+the ATA directives can be used for these disks (but see note below).
 
 .B If an Areca controller is used
 then the corresponding SCSI generic device (/dev/sg?)  must be listed,
@@ -287,22 +294,14 @@ smartmontools must be used; Please see the \fBsmartctl\fP(8) man page
 for further details.
 .TP
 .B \-d TYPE
-Specifies the type of the device.  This Directive may be used multiple
-times for one device, but the arguments \fIata\fP, \fIscsi\fP,
-\fIsat\fP, \fImarvell\fP, \fIcciss,N\fP, \fIareca,N\fP, \fImegaraid,N\fP
-and \fI3ware,N\fP are mutually-exclusive. If more than one is given then
-\fBsmartd\fP will use the last one which appears.
+Specifies the type of the device.
+The valid arguments to this directive are:
 
-If none of these three arguments is given, then \fBsmartd\fP will
-first attempt to guess the device type by looking at whether the sixth
-character in the device name is an \'s\' or an \'h\'.  This will work for
-device names like /dev/hda or /dev/sdb, and corresponds to choosing
-\fIata\fP or \fIscsi\fP respectively. If
-\fBsmartd\fP
-can\'t guess from this sixth character, then it will simply try to
-access the device using first ATA and then SCSI ioctl()s.
-
-The valid arguments to this Directive are:
+.I auto
+- attempt to guess the device type from the device name or from
+controller type info provided by the operating system or from
+a matching USB ID entry in the drive database.
+This is the default.
 
 .I ata
 \- the device type is ATA.  This prevents
@@ -316,95 +315,93 @@ from issuing ATA commands to a SCSI device.
 
 .I sat
 \- the device type is SCSI to ATA Translation (SAT).
-\fBsmartd\fP
-will generate ATA (smart) commands and then package them in
-the SAT defined ATA PASS THROUGH SCSI commands. The commands
-are then routed through the SCSI pass through interface to the
-operating system. There are two types of ATA PASS THROUGH
-SCSI commands: a 12 byte and 16 byte variant.
-\fBsmartd\fP
-can use either and defaults to the 16 byte variant. This can
-be overridden with this syntax: \'\-d sat,12\' or \'\-d sat,16\'.
+This is for ATA disks that have a SCSI to ATA Translation (SAT) Layer
+(SATL) between the disk and the operating system.
+SAT defines two ATA PASS THROUGH SCSI commands, one 12 bytes long and
+the other 16 bytes long.  The default is the 16 byte variant which can be
+overridden with either \'\-d sat,12\' or \'\-d sat,16\'.
+
+.I usbcypress
+\- this device type is for ATA disks that are behind a Cypress USB to PATA
+bridge.  This will use the ATACB proprietary scsi pass through command.
+The default SCSI operation code is 0x24, but although it can be overridden
+with \'\-d usbcypress,0xN\', where N is the scsi operation code,
+you're running the risk of damage to the device or filesystems on it.
+
+.I usbjmicron
+- this device type is for SATA disks that are behind a JMicron USB to
+PATA/SATA bridge.  The 48-bit ATA commands (required e.g. for \'\-l xerror\',
+see below) do not work with all of these bridges and are therefore disabled by
+default.  These commands can be enabled by \'\-d usbjmicron,x\'.
+If two disks are connected to a bridge with two ports, an error message is printed
+if no PORT is specified.
+The port can be specified by \'\-d usbjmicron[,x],PORT\' where PORT is 0
+(master) or 1 (slave).  This is not necessary if the device uses a port
+multiplier to connect multiple disks to one port.  The disks appear under
+separate /dev/ice names then.
+CAUTION: Specifying \',x\' for a device which does not support it results
+in I/O errors and may disconnect the drive.  The same applies if the specified
+PORT does not exist or is not connected to a disk.
+
+.I usbsunplus
+\- this device type is for SATA disks that are behind a SunplusIT USB to SATA
+bridge.
 
 .I marvell
-\- Under Linux, interact with SATA disks behind Marvell chip-set
+\- [Linux only] interact with SATA disks behind Marvell chip-set
 controllers (using the Marvell rather than libata driver).
 
 .I megaraid,N
-\- the device consists of one or more SCSI/SAS/SATA disks connected
-to a MegaRAID controller.  The non-negative integer N (in the range
-of 0 to 127 inclusive) denotes which disk on the controller is monitored.
+\- [Linux only] the device consists of one or more SCSI/SAS disks connected
+to a MegaRAID controller.  The non-negative integer N (in the range of 0 to
+127 inclusive) denotes which disk on the controller is monitored.
+This interface will also work for Dell PERC controllers.
 In log files and email messages this disk will be identified as
 megaraid_disk_XXX with XXX in the range from 000 to 127 inclusive.
+Please see the \fBsmartctl\fP(8) man page for further details.
 
 .I 3ware,N
-\- the device consists of one or more ATA disks connected to a 3ware
-RAID controller. The non-negative integer N (in the range from 0 to 127 
-inclusive) denotes which disk on the controller is monitored.  In log
-files and email messages this disk will be identified as 3ware_disk_XXX
+\- [FreeBSD and Linux only] the device consists of one or more ATA disks
+connected to a 3ware RAID controller.  The non-negative integer N
+(in the range from 0 to 127 inclusive) denotes which disk on the controller
+is monitored.
+In log files and email messages this disk will be identified as 3ware_disk_XXX
 with XXX in the range from 000 to 127 inclusive.
 
-This Directive may at first appear confusing, because the 3ware
-controller is a SCSI device (such as /dev/sda) and should be listed as
-such in the the configuration file.
-However when the \'\-d 3ware,N\'
-Directive is used, then the corresponding disk is addressed using
-native ATA commands which are \'passed through\' the SCSI driver. All
-ATA Directives listed in this man page may be used.  Note that while
-you may use \fBany\fP of the 3ware SCSI logical devices /dev/sd? to
-address \fBany\fP of the physical disks (3ware ports), error and log
+Note that while you may use \fBany\fP of the 3ware SCSI logical devices /dev/tw*
+to address \fBany\fP of the physical disks (3ware ports), error and log
 messages will make the most sense if you always list the 3ware SCSI
-logical device corresponding to the particular physical disks.  Please
-see the \fBsmartctl\fP(8) man page for further details.
-
-ATA disks behind 3ware controllers may alternatively be accessed via a
-character device interface /dev/twe0-15 (3ware 6000/7000/8000
-controllers) and /dev/twa0-15 (3ware 9000 series controllers).  Note
-that the 9000 series controllers may \fBonly\fP be accessed using the
-character device interface /dev/twa0-15 and not the SCSI device
-interface /dev/sd?.  Please see the \fBsmartctl\fP(8) man page for
-further details.
-
-Note that older 3w-xxxx drivers do not pass the \'Enable Autosave\'
-(\fB-S on\fP) and \'Enable Automatic Offline\' (\fB-o on\fP) commands
-to the disk, if the SCSI interface is used, and produce these types of
-harmless syslog error messages instead: \fB\'3w-xxxx: tw_ioctl():
-Passthru size (123392) too big\'\fP. This can be fixed by upgrading to
-version 1.02.00.037 or later of the 3w-xxxx driver, or by applying a
-patch to older versions.  See
-\fBhttp://smartmontools.sourceforge.net/\fP for instructions.
-Alternatively use the character device interfaces /dev/twe0-15 (3ware
-6/7/8000 series controllers) or /dev/twa0-15 (3ware 9000 series
-controllers).
+logical device corresponding to the particular physical disks.
+Please see the \fBsmartctl\fP(8) man page for further details.
 
 .I areca,N
-\- the device consists of one or more SATA disks connected to an Areca
-SATA RAID controller.  The positive integer N (in the range from 1 to
-24 inclusive) denotes which disk on the controller is monitored.  In
-log files and email messages this disk will be identifed as
+\- [Linux only] the device consists of one or more SATA disks connected to an
+Areca SATA RAID controller.  The positive integer N (in the range from 1 to
+24 inclusive) denotes which disk on the controller is monitored.
+In log files and email messages this disk will be identifed as
 areca_disk_XX with XX in the range from 01 to 24 inclusive.
+Please see the \fBsmartctl\fP(8) man page for further details.
 
 .I cciss,N
-\- the device consists of one or more SCSI disks connected to a cciss
-RAID controller. The non-negative integer N (in the range from 0 to 15
-inclusive) denotes which disk on the controller is monitored.  In log
-files and email messages this disk will be identified as cciss_disk_XX
+\- [FreeBSD and Linux only] the device consists of one or more SCSI/SAS disks
+connected to a cciss RAID controller.  The non-negative integer N (in the range
+from 0 to 15 inclusive) denotes which disk on the controller is monitored.
+In log files and email messages this disk will be identified as cciss_disk_XX
 with XX in the range from 00 to 15 inclusive.
-
-.B 3ware, MegaRAID, Areca and cciss controllers are currently ONLY supported under Linux.
+Please see the \fBsmartctl\fP(8) man page for further details.
 
 .I hpt,L/M/N
-\- the device consists of one or more ATA disks connected to a HighPoint
-RocketRAID controller.  The integer L is the controller id, the integer M
-is the channel number, and the integer N is the PMPort number if it is
-available. The allowed values of L are from 1 to 4 inclusive, M are from
-1 to 8 inclusive and N from 1 to 4 if PMPort available.  And also these
-values are limited by the model of the HighPoint RocketRAID controller.
+\- [FreeBSD and Linux only] the device consists of one or more ATA disks
+connected to a HighPoint RocketRAID controller.  The integer L is the
+controller id, the integer M is the channel number, and the integer N
+is the PMPort number if it is available.  The allowed values of L are
+from 1 to 4 inclusive, M are from 1 to 8 inclusive and N from 1 to 4
+if PMPort available.  And also these values are limited by the model
+of the HighPoint RocketRAID controller.
 In log files and email messages this disk will be identified as
 hpt_X/X/X and X/X/X is the same as L/M/N, note if no N indicated, N set
 to the default value 1.
-
-.B HighPoint RocketRAID controllers are currently ONLY supported under Linux and FreeBSD.
+Please see the \fBsmartctl\fP(8) man page for further details.
 
 .I removable
 \- the device or its media is removable.  This indicates to
@@ -415,8 +412,8 @@ behavior) if the device does not appear to be present when
 with the other \'\-d\' Directives.
 .TP
 .B \-n POWERMODE[,N][,q]
-This \'nocheck\' Directive is used to prevent a disk from being
-spun-up when it is periodically polled by \fBsmartd\fP.
+[ATA only] This \'nocheck\' Directive is used to prevent a disk from
+being spun-up when it is periodically polled by \fBsmartd\fP.
 
 ATA disks have five different power states. In order of increasing
 power consumption they are: \'OFF\', \'SLEEP\', \'STANDBY\', \'IDLE\',
@@ -493,7 +490,7 @@ self\-test logging.
 [Please see the \fBsmartctl \-T\fP command-line option.]
 .TP
 .B \-o VALUE
-Enables or disables SMART Automatic Offline Testing when
+[ATA only] Enables or disables SMART Automatic Offline Testing when
 \fBsmartd\fP
 starts up and has no further effect.  The valid arguments to this
 Directive are \fIon\fP and \fIoff\fP.
@@ -514,7 +511,7 @@ Directive are \fIon\fP and \fIoff\fP.  Also affects SCSI devices.
 [Please see the \fBsmartctl \-S\fP command-line option.]
 .TP
 .B \-H
-Check the SMART health status of the disk.  If any Prefailure
+[ATA only] Check the SMART health status of the disk.  If any Prefailure
 Attributes are less than or equal to their threshold values, then disk
 failure is predicted in less than 24 hours, and a message at loglevel
 .B \'LOG_CRIT\'
@@ -527,13 +524,13 @@ Reports increases in the number of errors in one of three SMART logs.  The
 valid arguments to this Directive are:
 
 .I error
-\- report if the number of ATA errors reported in the Summary SMART error log
-has increased since the last check.
+\- [ATA only] report if the number of ATA errors reported in the Summary SMART
+error log has increased since the last check.
 
 .I xerror
-\- [NEW EXPERIMENTAL SMARTD FEATURE] report if the number of ATA errors
-reported in the Extended Comprehensive SMART error log has increased since
-the last check.
+\- [ATA only] [NEW EXPERIMENTAL SMARTD FEATURE] report if the number of ATA
+errors reported in the Extended Comprehensive SMART error log has increased
+since the last check.
 
 If both \'\-l error\' and \'\-l xerror\' are specified, smartd checks
 the maximum of both values.
@@ -550,10 +547,22 @@ disk (and it fails a test!).  Self-Tests can be run automatically by
 Self-Tests can also be run manually by using the \fB\'\-t\ short\'\fP
 and \fB\'\-t\ long\'\fP options of \fBsmartctl\fP and the results of
 the testing can be observed using the \fBsmartctl \'\-l\ selftest\'\fP
-command-line option.]
-
+command-line option.
 [Please see the \fBsmartctl \-l\fP and \fB\-t\fP command-line
 options.]
+
+[ATA only] Failed self-tests outdated by a newer successful extended
+self\-test are ignored.
+
+.I scterc,READTIME,WRITETIME
+\- [ATA only] [NEW EXPERIMENTAL SMARTD FEATURE] sets the SCT Error
+Recovery Control settings to the specified values (deciseconds)
+when \fBsmartd\fP starts up and has no further effect.
+Values of 0 disable the feature, other values less than 65 are probably
+not supported.  For RAID configurations, this is typically set to
+70,70 deciseconds.
+[Please see the \fBsmartctl \-l scterc\fP command-line option.]
+
 .TP
 .B \-s REGEXP
 Run Self-Tests or Offline Immediate Tests, at scheduled times.  A
@@ -569,13 +578,17 @@ only), and \'O\' for an \fBO\fPffline Immediate Test (ATA only).  As
 soon as a match is found, the test will be started and no additional
 matches will be sought for that device and that polling cycle.
 
-[NEW EXPERIMENTAL SMARTD FEATURE] To run scheduled Selective
-Self-Tests, use \'n\' for \fBn\fPext span, \'r\' to \fBr\fPedo last
-span, or \'c\' to \fBc\fPontinue with next span or redo last span
-based on status of last test. The LBA range is based on the first
-span from the last test.
+To run scheduled Selective Self-Tests, use \'n\' for \fBn\fPext span,
+\'r\' to \fBr\fPedo last span, or \'c\' to \fBc\fPontinue with next span
+or redo last span based on status of last test.
+The LBA range is based on the first span from the last test.
 See the \fBsmartctl \-t select,[next|redo|cont]\fP options for
 further info.
+
+[NEW EXPERIMENTAL SMARTD FEATURE] Some disks (e.g. WD) do not preserve
+the selective self test log accross power cycles.  If state persistence
+(\'\-s\' option) is enabled, the last test span is preserved by smartd
+and used if (and only if) the selective self test log is empty.
 
 .IP \fBMM\fP 4
 is the month of the year, expressed with two decimal digits.  The
@@ -764,11 +777,12 @@ three):
 
 .I once
 \- send only one warning email for each type of disk problem detected.  This
-is the default.
+is the default unless state persistence (\'\-s\' option) is enabled.
 
 .I daily
 \- send additional warning reminder emails, once per day, for each type
-of disk problem detected.
+of disk problem detected.  This is the default if state persistence
+(\'\-s\' option) is enabled.
 
 .I diminishing
 \- send additional warning reminder emails, after a one-day interval,
@@ -822,10 +836,8 @@ is set to the argument of \-M exec, if present or else to \'mail\'
 .IP \fBSMARTD_DEVICE\fP 4
 is set to the device path (examples: /dev/hda, /dev/sdb).
 .IP \fBSMARTD_DEVICETYPE\fP 4
-is set to the device type (possible values: ata, scsi, 3ware,N,
-areca,N, hpt,L/M/N).  Here N=0,...,127 denotes the ATA disk behind a
-3ware RAID controller and L/M/N denotes the SATA disk behind a
-HighPoint RocketRAID controller.
+is set to the device type specified by \'-d\' directive or
+\'auto\' if none.
 .IP \fBSMARTD_DEVICESTRING\fP 4
 is set to the device description.  For SMARTD_DEVICETYPE of ata or
 scsi, this is the same as SMARTD_DEVICE.  For 3ware RAID controllers,
@@ -959,32 +971,32 @@ Directive are given below. Some sample scripts are also included in
 /usr/local/share/doc/smartmontools/examplescripts/.
 .TP
 .B \-f
-Check for \'failure\' of any Usage Attributes.  If these Attributes are
-less than or equal to the threshold, it does NOT indicate imminent
-disk failure.  It "indicates an advisory condition where the usage or
-age of the device has exceeded its intended design life period."
+[ATA only] Check for \'failure\' of any Usage Attributes.  If these
+Attributes are less than or equal to the threshold, it does NOT indicate
+imminent disk failure.  It "indicates an advisory condition where the usage
+or age of the device has exceeded its intended design life period."
 [Please see the \fBsmartctl \-A\fP command-line option.]
 .TP
 .B \-p
-Report anytime that a Prefail Attribute has changed
+[ATA only] Report anytime that a Prefail Attribute has changed
 its value since the last check, 30 minutes ago. [Please see the
 .B smartctl \-A
 command-line option.]
 .TP
 .B \-u
-Report anytime that a Usage Attribute has changed its value
+[ATA only] Report anytime that a Usage Attribute has changed its value
 since the last check, 30 minutes ago. [Please see the
 .B smartctl \-A
 command-line option.]
 .TP
 .B \-t
-Equivalent to turning on the two previous flags \'\-p\' and \'\-u\'.
+[ATA only] Equivalent to turning on the two previous flags \'\-p\' and \'\-u\'.
 Tracks changes in \fIall\fP device Attributes (both Prefailure and
 Usage). [Please see the \fBsmartctl\fP \-A command-line option.]
 .TP
 .B \-i ID
-Ignore device Attribute number \fBID\fP when checking for failure of
-Usage Attributes.  \fBID\fP must be a decimal integer in the range
+[ATA only] Ignore device Attribute number \fBID\fP when checking for failure
+of Usage Attributes.  \fBID\fP must be a decimal integer in the range
 from 1 to 255.  This Directive modifies the behavior of the \'\-f\'
 Directive and has no effect without it.
 
@@ -994,7 +1006,7 @@ want to keep getting messages about the hours-on-lifetime Attribute
 times for a single device, if you want to ignore multiple Attributes.
 .TP
 .B \-I ID
-Ignore device Attribute \fBID\fP when tracking changes in the
+[ATA only] Ignore device Attribute \fBID\fP when tracking changes in the
 Attribute values.  \fBID\fP must be a decimal integer in the range
 from 1 to 255.  This Directive modifies the behavior of the \'\-p\',
 \'\-u\', and \'\-t\' tracking Directives and has no effect without one
@@ -1006,9 +1018,9 @@ each time the temperature changes.  This Directive may appear multiple
 times for a single device, if you want to ignore multiple Attributes.
 .TP
 .B \-r ID[!]
-When tracking, report the \fIRaw\fP value of Attribute \fBID\fP along
-with its (normally reported) \fINormalized\fP value.  \fBID\fP must be
-a decimal integer in the range from 1 to 255.  This Directive modifies
+[ATA only] When tracking, report the \fIRaw\fP value of Attribute \fBID\fP
+along with its (normally reported) \fINormalized\fP value.  \fBID\fP must
+be a decimal integer in the range from 1 to 255.  This Directive modifies
 the behavior of the \'\-p\', \'\-u\', and \'\-t\' tracking Directives
 and has no effect without one of them.  This Directive may be given
 multiple times.
@@ -1021,7 +1033,7 @@ value is considered critical.  The report will be logged as LOG_CRIT
 and a warning email will be sent if \'-m\' is specified.
 .TP
 .B \-R ID[!]
-When tracking, report whenever the \fIRaw\fP value of Attribute
+[ATA only] When tracking, report whenever the \fIRaw\fP value of Attribute
 \fBID\fP changes.  (Normally \fBsmartd\fP only tracks/reports changes
 of the \fINormalized\fP Attribute values.)  \fBID\fP must be a decimal
 integer in the range from 1 to 255.  This Directive modifies the
@@ -1190,10 +1202,9 @@ reset if uncorrectable sector are reallocated.  This sets \'-U 198+\'
 if no other \'-U\' directive is specified.
 .TP
 .B \-P TYPE
-Specifies whether
-\fBsmartd\fP
-should use any preset options that are available for this drive.  The
-valid arguments to this Directive are:
+[ATA only] Specifies whether \fBsmartd\fP should use any preset options
+that are available for this drive.
+The valid arguments to this Directive are:
 
 .I use
 \- use any presets that are available for this drive.  This is the default.
@@ -1401,4 +1412,4 @@ SEE ALSO:
 
 .SH
 SVN ID OF THIS PAGE:
-$Id: smartd.conf.5.in 3117 2010-06-08 15:41:04Z chrfranke $
+$Id: smartd.conf.5.in 3284 2011-03-04 21:33:35Z chrfranke $

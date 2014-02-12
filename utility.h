@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,7 @@
 #ifndef UTILITY_H_
 #define UTILITY_H_
 
-#define UTILITY_H_CVSID "$Id: utility.h 3093 2010-04-30 09:57:36Z chrfranke $"
+#define UTILITY_H_CVSID "$Id: utility.h 3305 2011-03-30 21:32:05Z chrfranke $"
 
 #include <time.h>
 #include <sys/types.h> // for regex.h (according to POSIX)
@@ -134,16 +134,6 @@ inline T * CheckFree(T * address, int whatline, const char* file)
 
 #endif // OLD_INTERFACE
 
-// This function prints either to stdout or to the syslog as needed
-
-// [From GLIBC Manual: Since the prototype doesn't specify types for
-// optional arguments, in a call to a variadic function the default
-// argument promotions are performed on the optional argument
-// values. This means the objects of type char or short int (whether
-// signed or not) are promoted to either int or unsigned int, as
-// appropriate.]
-void PrintOut(int priority, const char *fmt, ...) __attribute__ ((format(printf, 2, 3)));
-
 // Compile time check of byte ordering
 // (inline const function allows compiler to remove dead code)
 inline bool isbigendian()
@@ -182,6 +172,14 @@ void FixGlibcTimeZoneBug();
 
 // convert time in msec to a text string
 void MsecToText(unsigned int msec, char *txt);
+
+// Format integer with thousands separator
+const char * format_with_thousands_sep(char * str, int strsize, uint64_t val,
+                                       const char * thousands_sep = 0);
+
+// Format capacity with SI prefixes
+const char * format_capacity(char * str, int strsize, uint64_t val,
+                             const char * decimal_point = 0);
 
 // Wrapper class for a raw data buffer
 class raw_buffer
@@ -273,7 +271,8 @@ public:
   // Construction & assignment
   regular_expression();
 
-  regular_expression(const char * pattern, int flags);
+  regular_expression(const char * pattern, int flags,
+                     bool throw_on_error = true);
 
   ~regular_expression();
 
@@ -323,10 +322,6 @@ private:
   bool compile();
 };
 
-// macros to control printing
-#define PRINT_ON(control)  {if (control->printing_switchable) control->dont_print=false;}
-#define PRINT_OFF(control) {if (control->printing_switchable) control->dont_print=true;}
-
 #ifdef _WIN32
 // Get exe directory
 //(implemented in os_win32.cpp)
@@ -335,21 +330,10 @@ std::string get_exe_dir();
 
 
 #ifdef OLD_INTERFACE
-// possible values for controller_type in extern.h
+// remaining controller types in old interface modules
 #define CONTROLLER_UNKNOWN              0x00
 #define CONTROLLER_ATA                  0x01
 #define CONTROLLER_SCSI                 0x02
-#define CONTROLLER_3WARE                0x03  // set by -d option, but converted to one of three types below
-#define CONTROLLER_3WARE_678K           0x04  // NOT set by guess_device_type()
-#define CONTROLLER_3WARE_9000_CHAR      0x05  // set by guess_device_type()
-#define CONTROLLER_3WARE_678K_CHAR      0x06  // set by guess_device_type()
-#define CONTROLLER_MARVELL_SATA         0x07  // SATA drives behind Marvell controllers
-#define CONTROLLER_SAT         	        0x08  // SATA device behind a SCSI ATA Translation (SAT) layer
-#define CONTROLLER_HPT                  0x09  // SATA drives behind HighPoint Raid controllers
-#define CONTROLLER_CCISS		0x10  // CCISS controller 
-#define CONTROLLER_PARSEDEV             0x11  // "smartctl -r ataioctl,2 ..." output parser pseudo-device
-#define CONTROLLER_USBCYPRESS		0x12  // ATA device behind Cypress USB bridge
-#define CONTROLLER_ARECA                0x13  // Areca controller
 #endif
 
 #endif

@@ -40,20 +40,20 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 #include "config.h"
 #include "int64.h"
-#include "extern.h"
 #include "scsicmds.h"
 #include "atacmds.h" // FIXME: for smart_command_set only
 #include "dev_interface.h"
 #include "utility.h"
 
-const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 3096 2010-04-30 14:32:49Z chrfranke $"
-CONFIG_H_CVSID EXTERN_H_CVSID INT64_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
+const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 3302 2011-03-25 23:04:36Z dpgilbert $"
+  SCSICMDS_H_CVSID;
 
-/* for passing global control variables */
-extern smartmonctrl *con;
+// Print SCSI debug messages?
+unsigned char scsi_debugmode = 0;
 
 /* output binary in hex and optionally ascii */
 void dStrHex(const char* str, int len, int no_ascii)
@@ -120,23 +120,33 @@ static struct scsi_opcode_name opcode_name_arr[] = {
     {INQUIRY, "inquiry"},                       /* 0x12 */
     {MODE_SELECT, "mode select(6)"},            /* 0x15 */
     {MODE_SENSE, "mode sense(6)"},              /* 0x1a */
+    {START_STOP_UNIT, "start stop unit"},       /* 0x1b */
     {RECEIVE_DIAGNOSTIC, "receive diagnostic"}, /* 0x1c */
     {SEND_DIAGNOSTIC, "send diagnostic"},       /* 0x1d */
+    {READ_CAPACITY_10, "read capacity(10)"},    /* 0x25 */
     {READ_DEFECT_10, "read defect list(10)"},   /* 0x37 */
     {LOG_SELECT, "log select"},                 /* 0x4c */
     {LOG_SENSE, "log sense"},                   /* 0x4d */
     {MODE_SELECT_10, "mode select(10)"},        /* 0x55 */
     {MODE_SENSE_10, "mode sense(10)"},          /* 0x5a */
     {SAT_ATA_PASSTHROUGH_16, "ata pass-through(16)"}, /* 0x85 */
+    {READ_CAPACITY_16, "read capacity(16)"},    /* 0x9e,0x10 */
+    {REPORT_LUNS, "report luns"},               /* 0xa0 */
     {SAT_ATA_PASSTHROUGH_12, "ata pass-through(12)"}, /* 0xa1 */
 };
 
+static const char * vendor_specific = "<vendor specific>";
+
+/* Need to expand to take service action into account. For commands
+ * of interest the service action is in the 2nd command byte */
 const char * scsi_get_opcode_name(UINT8 opcode)
 {
     int k;
     int len = sizeof(opcode_name_arr) / sizeof(opcode_name_arr[0]);
     struct scsi_opcode_name * onp;
 
+    if (opcode >= 0xc0)
+        return vendor_specific;
     for (k = 0; k < len; ++k) {
         onp = &opcode_name_arr[k];
         if (opcode == onp->opcode)
@@ -242,6 +252,159 @@ const char * scsiErrString(int scsiErr)
     }
 }
 
+/* Iterates to next designation descriptor in the device identification
+ * VPD page. The 'initial_desig_desc' should point to start of first
+ * descriptor with 'page_len' being the number of valid bytes in that
+ * and following descriptors. To start, 'off' should point to a negative
+ * value, thereafter it should point to the value yielded by the previous
+ * call. If 0 returned then 'initial_desig_desc + *off' should be a valid
+ * descriptor; returns -1 if normal end condition and -2 for an abnormal
+ * termination. Matches association, designator_type and/or code_set when
+ * any of those values are greater than or equal to zero. */
+int scsi_vpd_dev_id_iter(const unsigned char * initial_desig_desc,
+			 int page_len, int * off, int m_assoc,
+		         int m_desig_type, int m_code_set)
+{
+    const unsigned char * ucp;
+    int k, c_set, assoc, desig_type;
+
+    for (k = *off, ucp = initial_desig_desc ; (k + 3) < page_len; ) {
+        k = (k < 0) ? 0 : (k + ucp[k + 3] + 4);
+        if ((k + 4) > page_len)
+            break;
+        c_set = (ucp[k] & 0xf);
+        if ((m_code_set >= 0) && (m_code_set != c_set))
+            continue;
+        assoc = ((ucp[k + 1] >> 4) & 0x3);
+        if ((m_assoc >= 0) && (m_assoc != assoc))
+            continue;
+        desig_type = (ucp[k + 1] & 0xf);
+        if ((m_desig_type >= 0) && (m_desig_type != desig_type))
+            continue;
+        *off = k;
+        return 0;
+    }
+    return (k == page_len) ? -1 : -2;
+}
+
+/* Decode VPD page 0x83 logical unit designator into a string. If both
+ * numeric address and SCSI name string present, prefer the former.
+ * Returns 0 on success, -1 on error with error string in s. */
+int scsi_decode_lu_dev_id(const unsigned char * b, int blen, char * s,
+			  int slen, int * transport)
+{
+    int m, c_set, assoc, desig_type, i_len, naa, off, u, have_scsi_ns;
+    const unsigned char * ucp;
+    const unsigned char * ip;
+    char * orig_s = s;
+
+    if (transport)
+	*transport = -1;
+    if (slen < 32) {
+	if (slen > 0)
+	    s[0] = '\0';
+	return -1;
+    }
+    have_scsi_ns = 0;
+    s[0] = '\0';
+    off = -1;
+    while ((u = scsi_vpd_dev_id_iter(b, blen, &off, -1, -1, -1)) == 0) {
+        ucp = b + off;
+        i_len = ucp[3];
+        if ((off + i_len + 4) > blen) {
+	    s += sprintf(s, "error: designator length");
+	    return -1;
+        }
+        assoc = ((ucp[1] >> 4) & 0x3);
+	if (transport && assoc && (ucp[1] & 0x80) && (*transport < 0))
+	    *transport = (ucp[0] >> 4) & 0xf;
+	if (0 != assoc)
+	    continue;
+        ip = ucp + 4;
+        c_set = (ucp[0] & 0xf);
+        desig_type = (ucp[1] & 0xf);
+
+        switch (desig_type) {
+        case 0: /* vendor specific */
+        case 1: /* T10 vendor identification */
+            break;
+        case 2: /* EUI-64 based */
+            if ((8 != i_len) && (12 != i_len) && (16 != i_len)) {
+	        s += sprintf(s, "error: EUI-64 length");
+	        return -1;
+	    }
+	    if (have_scsi_ns)
+		s = orig_s;
+            s += sprintf(s, "0x");
+            for (m = 0; m < i_len; ++m)
+                s += sprintf(s, "%02x", (unsigned int)ip[m]);
+            break;
+        case 3: /* NAA */
+            if (1 != c_set) {
+	        s += sprintf(s, "error: NAA bad code_set");
+		return -1;
+	    }
+            naa = (ip[0] >> 4) & 0xff;
+            if ((naa < 2) || (naa > 6) || (4 == naa)) {
+	        s += sprintf(s, "error: unexpected NAA");
+		return -1;
+            }
+	    if (have_scsi_ns)
+		s = orig_s;
+            if (2 == naa) {             /* NAA IEEE Extended */
+                if (8 != i_len) {
+	            s += sprintf(s, "error: NAA 2 length");
+		    return -1;
+                }
+                s += sprintf(s, "0x");
+                for (m = 0; m < 8; ++m)
+                    s += sprintf(s, "%02x", (unsigned int)ip[m]);
+            } else if ((3 == naa ) || (5 == naa)) {
+                /* NAA=3 Locally assigned; NAA=5 IEEE Registered */
+                if (8 != i_len) {
+	            s += sprintf(s, "error: NAA 3 or 5 length");
+		    return -1;
+                }
+                s += sprintf(s, "0x");
+                for (m = 0; m < 8; ++m)
+                    s += sprintf(s, "%02x", (unsigned int)ip[m]);
+            } else if (6 == naa) {      /* NAA IEEE Registered extended */
+                if (16 != i_len) {
+	            s += sprintf(s, "error: NAA 6 length");
+		    return -1;
+                }
+                s += sprintf(s, "0x");
+                for (m = 0; m < 16; ++m)
+                    s += sprintf(s, "%02x", (unsigned int)ip[m]);
+            }
+            break;
+        case 4: /* Relative target port */
+        case 5: /* (primary) Target port group */
+        case 6: /* Logical unit group */
+        case 7: /* MD5 logical unit identifier */
+            break;
+        case 8: /* SCSI name string */
+            if (3 != c_set) {
+	        s += sprintf(s, "error: SCSI name string");
+		return -1;
+            }
+            /* does %s print out UTF-8 ok?? */
+	    if (orig_s == s) {
+                s += sprintf(s, "%s", (const char *)ip);
+		++have_scsi_ns;
+	    }
+            break;
+        default: /* reserved */
+            break;
+        }
+    }
+    if (-2 == u) {
+        s += sprintf(s, "error: bad structure");
+	return -1;
+    }
+    return 0;
+}
+
 /* Sends LOG SENSE command. Returns 0 if ok, 1 if device NOT READY, 2 if
    command not supported, 3 if field (within command) not supported or
    returns negated errno.  SPC-3 sections 6.6 and 7.2 (rec 22a).
@@ -296,7 +459,7 @@ int scsiLogSense(scsi_device * device, int pagenum, int subpagenum, UINT8 *pBuf,
         if ((res = scsiSimpleSenseFilter(&sinfo)))
             return res;
         /* sanity check on response */
-        if ((SUPPORTED_LPAGES != pagenum) && (pBuf[0] != pagenum))
+        if ((SUPPORTED_LPAGES != pagenum) && ((pBuf[0] & 0x3f) != pagenum))
             return SIMPLE_ERR_BAD_RESP;
         if (0 == ((pBuf[2] << 8) + pBuf[3]))
             return SIMPLE_ERR_BAD_RESP;
@@ -332,7 +495,7 @@ int scsiLogSense(scsi_device * device, int pagenum, int subpagenum, UINT8 *pBuf,
     if (0 != status)
         return status;
     /* sanity check on response */
-    if ((SUPPORTED_LPAGES != pagenum) && (pBuf[0] != pagenum))
+    if ((SUPPORTED_LPAGES != pagenum) && ((pBuf[0] & 0x3f) != pagenum))
         return SIMPLE_ERR_BAD_RESP;
     if (0 == ((pBuf[2] << 8) + pBuf[3]))
         return SIMPLE_ERR_BAD_RESP;
@@ -837,6 +1000,117 @@ int scsiReadDefect10(scsi_device * device, int req_plist, int req_glist, int dl_
     return scsiSimpleSenseFilter(&sinfo);
 }
 
+/* READ CAPACITY (10) command. Returns 0 if ok, 1 if NOT READY, 2 if
+ * command not supported, 3 if field in command not supported or returns
+ * negated errno. SBC-3 section 5.15 (rev 26) */
+int scsiReadCapacity10(scsi_device * device, unsigned int * last_lbap,
+                       unsigned int * lb_sizep)
+{
+    int res;
+    struct scsi_cmnd_io io_hdr;
+    struct scsi_sense_disect sinfo;
+    UINT8 cdb[10];
+    UINT8 sense[32];
+    UINT8 resp[8];
+
+    memset(&io_hdr, 0, sizeof(io_hdr));
+    memset(cdb, 0, sizeof(cdb));
+    memset(resp, 0, sizeof(resp));
+    io_hdr.dxfer_dir = DXFER_FROM_DEVICE;
+    io_hdr.dxfer_len = sizeof(resp);
+    io_hdr.dxferp = resp;
+    cdb[0] = READ_CAPACITY_10;
+    io_hdr.cmnd = cdb;
+    io_hdr.cmnd_len = sizeof(cdb);
+    io_hdr.sensep = sense;
+    io_hdr.max_sense_len = sizeof(sense);
+    io_hdr.timeout = SCSI_TIMEOUT_DEFAULT;
+
+    if (!device->scsi_pass_through(&io_hdr))
+      return -device->get_errno();
+    scsi_do_sense_disect(&io_hdr, &sinfo);
+    res = scsiSimpleSenseFilter(&sinfo);
+    if (res)
+        return res;
+    if (last_lbap)
+        *last_lbap = (resp[0] << 24) | (resp[1] << 16) | (resp[2] << 8) |
+                     resp[3];
+    if (lb_sizep)
+        *lb_sizep = (resp[4] << 24) | (resp[5] << 16) | (resp[6] << 8) |
+                    resp[7];
+    return 0;
+}
+
+/* READ CAPACITY (16) command. The bufLen argument should be 32. Returns 0
+ * if ok, 1 if NOT READY, 2 if command not supported, 3 if field in command
+ * not supported or returns negated errno. SBC-3 section 5.16 (rev 26) */
+int scsiReadCapacity16(scsi_device * device, UINT8 *pBuf, int bufLen)
+{
+    struct scsi_cmnd_io io_hdr;
+    struct scsi_sense_disect sinfo;
+    UINT8 cdb[16];
+    UINT8 sense[32];
+
+    memset(&io_hdr, 0, sizeof(io_hdr));
+    memset(cdb, 0, sizeof(cdb));
+    io_hdr.dxfer_dir = DXFER_FROM_DEVICE;
+    io_hdr.dxfer_len = bufLen;
+    io_hdr.dxferp = pBuf;
+    cdb[0] = READ_CAPACITY_16;
+    cdb[1] = SAI_READ_CAPACITY_16;
+    cdb[10] = (bufLen >> 24) & 0xff;
+    cdb[11] = (bufLen >> 16) & 0xff;
+    cdb[12] = (bufLen >> 8) & 0xff;
+    cdb[13] = bufLen & 0xff;
+    io_hdr.cmnd = cdb;
+    io_hdr.cmnd_len = sizeof(cdb);
+    io_hdr.sensep = sense;
+    io_hdr.max_sense_len = sizeof(sense);
+    io_hdr.timeout = SCSI_TIMEOUT_DEFAULT;
+
+    if (!device->scsi_pass_through(&io_hdr))
+      return -device->get_errno();
+    scsi_do_sense_disect(&io_hdr, &sinfo);
+    return scsiSimpleSenseFilter(&sinfo);
+}
+
+/* Return number of bytes of storage in 'device' or 0 if error. If
+ * successful and lb_sizep is not NULL then the logical block size
+ * in bytes is written to the location pointed to by lb_sizep. */
+uint64_t scsiGetSize(scsi_device * device, unsigned int * lb_sizep)
+{
+    unsigned int last_lba, lb_size;
+    int k, res;
+    uint64_t ret_val = 0;
+    UINT8 rc16resp[32];
+
+    res = scsiReadCapacity10(device, &last_lba, &lb_size);
+    if (res) {
+	if (scsi_debugmode)
+	    pout("scsiGetSize: READ CAPACITY(10) failed, res=%d\n", res);
+	return ret_val;
+    }
+    if (0xffffffff == last_lba) {
+	res = scsiReadCapacity16(device, rc16resp, sizeof(rc16resp));
+        if (res) {
+	    if (scsi_debugmode)
+	        pout("scsiGetSize: READ CAPACITY(16) failed, res=%d\n", res);
+	    return ret_val;
+	}
+	for (k = 0; k < 8; ++k) {
+	    if (k > 0)
+                ret_val <<= 8;
+            ret_val |= rc16resp[k + 0];
+        }
+    } else
+	ret_val = last_lba;
+    if (lb_sizep)
+	*lb_sizep = lb_size;
+    ++ret_val;	/* last_lba is origin 0 so need to bump to get number of */
+    return ret_val * lb_size;
+}
+
+
 /* Offset into mode sense (6 or 10 byte) response that actual mode page
  * starts at (relative to resp[0]). Returns -1 if problem */
 int scsiModePageOffset(const UINT8 * resp, int len, int modese_len)
@@ -859,7 +1133,7 @@ int scsiModePageOffset(const UINT8 * resp, int len, int modese_len)
                  "resp_len=%d bd_len=%d\n", offset, resp_len, bd_len);
             offset = -1;
         } else if ((offset + 2) > resp_len) {
-             if ((resp_len > 2) || con->reportscsiioctl)
+             if ((resp_len > 2) || scsi_debugmode)
                 pout("scsiModePageOffset: response length too short, "
                      "resp_len=%d offset=%d bd_len=%d\n", resp_len,
                      offset, bd_len);
@@ -996,7 +1270,7 @@ int scsiSetExceptionControlAndWarning(scsi_device * device, int enabled,
     sp = (rout[offset] & 0x80) ? 1 : 0; /* PS bit becomes 'SELECT's SP bit */
     if (enabled) {
         rout[offset + 2] = SCSI_IEC_MP_BYTE2_ENABLED;
-        if (con->reportscsiioctl > 2)
+        if (scsi_debugmode > 2)
             rout[offset + 2] |= SCSI_IEC_MP_BYTE2_TEST_MASK;
         rout[offset + 3] = SCSI_IEC_MP_MRIE;
         rout[offset + 4] = (SCSI_IEC_MP_INTERVAL_T >> 24) & 0xff;
@@ -1018,7 +1292,7 @@ int scsiSetExceptionControlAndWarning(scsi_device * device, int enabled,
             }
         }
         if (0 == memcmp(&rout[offset + 2], &iecp->raw_chg[offset + 2], 10)) {
-            if (con->reportscsiioctl > 0)
+            if (scsi_debugmode > 0)
                 pout("scsiSetExceptionControlAndWarning: already enabled\n");
             return 0;
         }
@@ -1026,7 +1300,7 @@ int scsiSetExceptionControlAndWarning(scsi_device * device, int enabled,
         eCEnabled = (rout[offset + 2] & DEXCPT_ENABLE) ? 0 : 1;
         wEnabled = (rout[offset + 2] & EWASC_ENABLE) ? 1 : 0;
         if ((! eCEnabled) && (! wEnabled)) {
-            if (con->reportscsiioctl > 0)
+            if (scsi_debugmode > 0)
                 pout("scsiSetExceptionControlAndWarning: already disabled\n");
             return 0;   /* nothing to do, leave other setting alone */
         }

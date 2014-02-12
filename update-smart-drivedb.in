@@ -2,7 +2,7 @@
 #
 # smartmontools drive database update script
 #
-# Copyright (C) 2010 Christian Franke <smartmontools-support@lists.sourceforge.net>
+# Copyright (C) 2010-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -12,7 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
 #
-# $Id: update-smart-drivedb.in 3072 2010-03-04 21:56:41Z chrfranke $
+# $Id: update-smart-drivedb.in 3294 2011-03-16 21:36:58Z chrfranke $
 #
 
 set -e
@@ -27,6 +27,12 @@ datarootdir="@datarootdir@"
 datadir="@datadir@"
 drivedbdir="@drivedbdir@"
 
+# Download tools
+os_dltools="@os_dltools@"
+
+# drivedb.h update branch
+BRANCH="@DRIVEDB_BRANCH@"
+
 # Default drivedb location
 DEST="$drivedbdir/drivedb.h"
 
@@ -38,13 +44,6 @@ SMARTCTL="$sbindir/smartctl"
 
 # ViewVC repository browser
 SRCEXPR='http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/$location/smartmontools/drivedb.h?revision=HEAD'
-
-# Convert version into branch name: 5.41[.X] -> "RELEASE_5_41_DRIVEDB"
-BRANCH="`echo $VERSION | sed -n 's|^\([0-9][0-9]*\)\.\([0-9][0-9]*\)\([^0-9].*\)\?$|RELEASE_\1_\2_DRIVEDB|p'`"
-
-if [ -z "$BRANCH" ]; then
-  echo "$0: syntax error in version number: $VERSION" >&2; exit 1
-fi
 
 
 # Parse options
@@ -78,14 +77,21 @@ esac
 which which >/dev/null || exit 1
 
 # Find download tool
-if which curl >/dev/null 2>/dev/null; then
-  DOWNLOAD="curl ${q:+-s }"'-f -o "$DEST.new" "$SRC"'
-elif which wget >/dev/null 2>/dev/null; then
-  DOWNLOAD="wget $q"'-O "$DEST.new" "$SRC"'
-elif which lynx >/dev/null 2>/dev/null; then
-  DOWNLOAD='lynx -source "$SRC" >"$DEST.new"'
-else
-  echo "$0: curl, wget or lynx not available" >&2; exit 1
+DOWNLOAD=
+for t in $os_dltools; do
+  if which $t >/dev/null 2>/dev/null; then
+    case $t in
+      curl)  DOWNLOAD="curl ${q:+-s }"'-f -o "$DEST.new" "$SRC"' ;;
+      lynx)  DOWNLOAD='lynx -source "$SRC" >"$DEST.new"' ;;
+      wget)  DOWNLOAD="wget $q"'-O "$DEST.new" "$SRC"' ;;
+      fetch) DOWNLOAD='fetch -o "$DEST.new" "$SRC"' ;; # FreeBSD
+      ftp)   DOWNLOAD='ftp -o "$DEST.new" "$SRC"' ;; # OpenBSD
+    esac
+    break
+  fi
+done
+if [ -z "$DOWNLOAD" ]; then
+  echo "$0: found none of: $os_dltools" >&2; exit 1
 fi
 
 # Try possible branch first, then trunk
@@ -96,7 +102,7 @@ for location in "branches/$BRANCH" "trunk"; do
   rm -f "$DEST.new"
   SRC="`eval echo "$SRCEXPR"`"
 
-  if eval $DOWNLOAD; then :; else
+  if (eval $DOWNLOAD); then :; else
     errmsg="download from $location failed (HTTP error)"
     continue
   fi

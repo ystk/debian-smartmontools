@@ -20,6 +20,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <err.h>
+#include <errno.h>
 #include <camlib.h>
 #include <cam/scsi/scsi_message.h>
 #include <cam/scsi/scsi_pass.h>
@@ -41,7 +42,6 @@
 #include "scsicmds.h"
 #include "cciss.h"
 #include "utility.h"
-#include "extern.h"
 #include "os_freebsd.h"
 
 #include "dev_interface.h"
@@ -59,6 +59,9 @@
 #if (FREEBSDVER >= 800000)
 #include <libusb20_desc.h>
 #include <libusb20.h>
+#elif defined(__DragonFly__)
+#include <bus/usb/usb.h>
+#include <bus/usb/usbhid.h>
 #else
 #include <dev/usb/usb.h>
 #include <dev/usb/usbhid.h>
@@ -71,12 +74,8 @@
 #define PATHINQ_SETTINGS_SIZE   128
 #endif
 
-static __unused const char *filenameandversion="$Id: os_freebsd.cpp 3098 2010-04-30 17:35:35Z chrfranke $";
-
-const char *os_XXXX_c_cvsid="$Id: os_freebsd.cpp 3098 2010-04-30 17:35:35Z chrfranke $" \
+const char *os_XXXX_c_cvsid="$Id: os_freebsd.cpp 3335 2011-05-21 17:32:16Z samm2 $" \
 ATACMDS_H_CVSID CCISS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_FREEBSD_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
-
-extern smartmonctrl * con;
 
 #define NO_RETURN 0
 #define BAD_SMART 1
@@ -120,11 +119,6 @@ void printwarning(int msgNo, const char* extra) {
 
 // global variable holding byte count of allocated memory
 long long bytes;
-
-const char * dev_freebsd_cpp_cvsid = "$Id: os_freebsd.cpp 3098 2010-04-30 17:35:35Z chrfranke $"
-  DEV_INTERFACE_H_CVSID;
-
-extern smartmonctrl * con; // con->reportscsiioctl
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -404,7 +398,10 @@ int freebsd_atacam_device::do_cmd( struct ata_ioc_request* request)
                  request->timeout * 1000); // timeout in seconds
 
   // ata_28bit_cmd
-  ccb.ataio.cmd.flags = 0;
+  if (request->flags == ATA_CMD_CONTROL)
+    ccb.ataio.cmd.flags = CAM_ATAIO_NEEDRESULT;
+  else
+    ccb.ataio.cmd.flags = 0;
   ccb.ataio.cmd.command = request->u.ata.command;
   ccb.ataio.cmd.features = request->u.ata.feature;
   ccb.ataio.cmd.lba_low = request->u.ata.lba;
@@ -420,11 +417,13 @@ int freebsd_atacam_device::do_cmd( struct ata_ioc_request* request)
     return -1;
   }
 
-  if ((ccb.ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP)
-    return 0;
+  if ((ccb.ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
+    cam_error_print(m_camdev, &ccb, CAM_ESF_ALL, CAM_EPF_ALL, stderr);
+    return -1;
+  }
 
-  cam_error_print(m_camdev, &ccb, CAM_ESF_ALL, CAM_EPF_ALL, stderr);
-  return -1;
+  request->u.ata.count = ccb.ataio.res.sector_count;
+  return 0;
 }
 
 #endif
@@ -961,7 +960,7 @@ freebsd_scsi_device::freebsd_scsi_device(smart_interface * intf,
 
 bool freebsd_scsi_device::scsi_pass_through(scsi_cmnd_io * iop)
 {
-  int report=con->reportscsiioctl;
+  int report=scsi_debugmode;
   union ccb *ccb;
 
   if (report > 0) {
@@ -1098,7 +1097,7 @@ freebsd_cciss_device::freebsd_cciss_device(smart_interface * intf,
 bool freebsd_cciss_device::scsi_pass_through(scsi_cmnd_io * iop)
 {
 #ifdef HAVE_DEV_CISS_CISSIO_H
-  int status = cciss_io_interface(get_fd(), m_disknum, iop, con->reportscsiioctl);
+  int status = cciss_io_interface(get_fd(), m_disknum, iop, scsi_debugmode);
   if (status < 0)
       return set_err(-status);
   return true;
@@ -1244,38 +1243,19 @@ scsi_device * freebsd_smart_interface::get_scsi_device(const char * name, const 
 // -1:   error
 // >=0: number of discovered devices
 
-int get_dev_names_cam(char*** names, bool show_all) {
-  int n = 0;
-  char** mp = NULL;
-  unsigned int i;
-  union ccb ccb;
-  int bufsize, fd = -1;
-  int skip_device = 0, skip_bus = 0, changed = 0;
-  char *devname = NULL;
-  int serrno=-1;
-
-  // in case of non-clean exit
-  *names=NULL;
-  ccb.cdm.matches = NULL;
- 
+bool get_dev_names_cam(std::vector<std::string> & names, bool show_all)
+{
+  int fd;
   if ((fd = open(XPT_DEVICE, O_RDWR)) == -1) {
     if (errno == ENOENT) /* There are no CAM device on this computer */
       return 0;
-    serrno = errno;
+    int serrno = errno;
     pout("%s control device couldn't opened: %s\n", XPT_DEVICE, strerror(errno));
-    n = -1;
-    goto end;
+    errno = serrno;
+    return false;
   }
 
-  // allocate space for up to MAX_NUM_DEV number of ATA devices
-  mp =  (char **)calloc(MAX_NUM_DEV, sizeof(char*));
-  if (mp == NULL) {
-    serrno=errno;
-    pout("Out of memory constructing scan device list (on line %d)\n", __LINE__);
-    n = -1;
-    goto end;
-  };
-
+  union ccb ccb;
   bzero(&ccb, sizeof(union ccb));
 
   ccb.ccb_h.path_id = CAM_XPT_PATH_ID;
@@ -1283,14 +1263,15 @@ int get_dev_names_cam(char*** names, bool show_all) {
   ccb.ccb_h.target_lun = CAM_LUN_WILDCARD;
 
   ccb.ccb_h.func_code = XPT_DEV_MATCH;
-  bufsize = sizeof(struct dev_match_result) * MAX_NUM_DEV;
+  int bufsize = sizeof(struct dev_match_result) * MAX_NUM_DEV;
   ccb.cdm.match_buf_len = bufsize;
+  // TODO: Use local buffer instead of malloc() if possible
   ccb.cdm.matches = (struct dev_match_result *)malloc(bufsize);
+  bzero(ccb.cdm.matches,bufsize); // clear ccb.cdm.matches structure
+  
   if (ccb.cdm.matches == NULL) {
-    serrno = errno;
-    pout("can't malloc memory for matches on line %d\n", __LINE__);
-    n = -1;
-    goto end;
+    close(fd);
+    throw std::bad_alloc();
   }
   ccb.cdm.num_matches = 0;
   ccb.cdm.num_patterns = 0;
@@ -1300,24 +1281,29 @@ int get_dev_names_cam(char*** names, bool show_all) {
    * We do the ioctl multiple times if necessary, in case there are
    * more than MAX_NUM_DEV nodes in the EDT.
    */
+  int skip_device = 0, skip_bus = 0, changed = 0; // TODO: bool
+  std::string devname;
   do {
     if (ioctl(fd, CAMIOCOMMAND, &ccb) == -1) {
-      serrno = errno;
+      int serrno = errno;
       pout("error sending CAMIOCOMMAND ioctl: %s\n", strerror(errno));
-      n = -1;
-      break;
+      free(ccb.cdm.matches);
+      close(fd);
+      errno = serrno;
+      return false;
     }
 
     if ((ccb.ccb_h.status != CAM_REQ_CMP)
       || ((ccb.cdm.status != CAM_DEV_MATCH_LAST)
       && (ccb.cdm.status != CAM_DEV_MATCH_MORE))) {
       pout("got CAM error %#x, CDM error %d\n", ccb.ccb_h.status, ccb.cdm.status);
-      serrno = ENXIO;
-      n = -1;
-      goto end;
+      free(ccb.cdm.matches);
+      close(fd);
+      errno = ENXIO;
+      return false;
     }
 
-    for (i = 0; i < ccb.cdm.num_matches && n < MAX_NUM_DEV; i++) {
+    for (unsigned i = 0; i < ccb.cdm.num_matches; i++) {
       struct bus_match_result *bus_result;
       struct device_match_result *dev_result;
       struct periph_match_result *periph_result;
@@ -1349,51 +1335,24 @@ int get_dev_names_cam(char*** names, bool show_all) {
         * We are searching for latest name
         */
         periph_result =  &ccb.cdm.matches[i].result.periph_result;
-        free(devname);
-        asprintf(&devname, "%s%s%d", _PATH_DEV, periph_result->periph_name, periph_result->unit_number);
-        if (devname == NULL) {
-          serrno=errno;
-          pout("Out of memory constructing scan SCSI device list (on line %d)\n", __LINE__);
-          n = -1;
-          goto end;
-        };
+        devname = strprintf("%s%s%d", _PATH_DEV, periph_result->periph_name, periph_result->unit_number);
         changed = 0;
       };
-      if ((changed == 1 || show_all) && devname != NULL) {
-        mp[n] = devname;
-        devname = NULL;
-        bytes+=1+strlen(mp[n]);
-        n++;
+      if ((changed == 1 || show_all) && !devname.empty()) {
+        names.push_back(devname);
+        devname.erase();
         changed = 0;
       };
     }
 
-  } while ((ccb.ccb_h.status == CAM_REQ_CMP) && (ccb.cdm.status == CAM_DEV_MATCH_MORE) && n < MAX_NUM_DEV);
+  } while ((ccb.ccb_h.status == CAM_REQ_CMP) && (ccb.cdm.status == CAM_DEV_MATCH_MORE));
 
-  if (devname != NULL) {
-    mp[n] = devname;
-    devname = NULL;
-    bytes+=1+strlen(mp[n]);
-    n++;
-  };
+  if (!devname.empty())
+    names.push_back(devname);
 
-  mp = (char **)reallocf(mp,n*(sizeof (char*))); // shrink to correct size
-  bytes += (n)*(sizeof(char*)); // and set allocated byte count
-
-end:
   free(ccb.cdm.matches);
-  if (fd>-1)
-    close(fd);
-  if (n <= 0) {
-    free(mp);
-    mp = NULL;
-  }
-
-  *names=mp;
-
-  if (serrno>-1)
-    errno=serrno;
-  return(n);
+  close(fd);
+  return true;
 }
 
 // we are using ATA subsystem enumerator to found all ATA devices on system
@@ -1504,11 +1463,10 @@ bool freebsd_smart_interface::scan_smart_devices(smart_device_list & devlist,
     }
   }
 
-  char * * scsinames = 0; int numscsi = 0;
+  std::vector<std::string> scsinames;
   if (!type || !strcmp(type, "scsi")) { // do not export duplicated names
-    numscsi = get_dev_names_cam(&scsinames,0);
-    if (numscsi < 0) {
-      set_err(ENOMEM);
+    if (!get_dev_names_cam(scsinames, false)) {
+      set_err(errno);
       return false;
     }
   }
@@ -1521,16 +1479,18 @@ bool freebsd_smart_interface::scan_smart_devices(smart_device_list & devlist,
     ata_device * atadev = get_ata_device(atanames[i], type);
     if (atadev)
       devlist.push_back(atadev);
+    free(atanames[i]);
   }
+  if(numata) free(atanames);
 
-  for (i = 0; i < numscsi; i++) {
+  for (i = 0; i < (int)scsinames.size(); i++) {
     if(!*type) { // try USB autodetection if no type specified
-      smart_device * smartdev = autodetect_smart_device(scsinames[i]);
+      smart_device * smartdev = autodetect_smart_device(scsinames[i].c_str());
       if(smartdev)
         devlist.push_back(smartdev);
     }
     else {
-      scsi_device * scsidev = get_scsi_device(scsinames[i], type);
+      scsi_device * scsidev = get_scsi_device(scsinames[i].c_str(), type);
       if (scsidev)
         devlist.push_back(scsidev);
     }
@@ -1679,7 +1639,7 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
   struct cam_device *cam_dev;
   union ccb ccb;
   int bus=-1;
-  int i;
+  int i,c;
   int len;
 
   // if dev_name null, or string length zero
@@ -1693,9 +1653,13 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
     // check ATA/ATAPI devices
     for (i = 0; i < numata; i++) {
       if(!strcmp(atanames[i],name)) {
+        for (c = i; c < numata; c++) free(atanames[c]);
+        free(atanames);
         return new freebsd_ata_device(this, name, "");
       }
+      else free(atanames[i]);
     }
+    if(numata) free(atanames);
   }
   else {
     if (numata < 0)
@@ -1703,12 +1667,13 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
   }
 
   // check CAM
-  char * * scsinames = 0; int numscsi = 0;
-  numscsi = get_dev_names_cam(&scsinames, 1);
-  if (numscsi > 0) {
+  std::vector<std::string> scsinames;
+  if (!get_dev_names_cam(scsinames, true))
+    pout("Unable to get CAM device list\n");
+  else if (!scsinames.empty()) {
     // check all devices on CAM bus
-    for (i = 0; i < numscsi; i++) {
-      if(strcmp(scsinames[i],name)==0)
+    for (i = 0; i < (int)scsinames.size(); i++) {
+      if(strcmp(scsinames[i].c_str(), name)==0)
       { // our disk device is CAM
         if ((cam_dev = cam_open_device(name, O_RDWR)) == NULL) {
           // open failure
@@ -1750,9 +1715,6 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
         return new freebsd_scsi_device(this, name, "");      
       }
     }
-  } // numscsi > 0
-  else {
-    if(numscsi<0) pout("Unable to get CAM device list\n");
   }
   // device type unknown
   return 0;

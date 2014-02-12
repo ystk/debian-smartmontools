@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,7 @@
 #ifndef ATACMDS_H_
 #define ATACMDS_H_
 
-#define ATACMDS_H_CVSID "$Id: atacmds.h 3065 2010-02-10 22:16:50Z chrfranke $"
+#define ATACMDS_H_CVSID "$Id: atacmds.h 3316 2011-04-19 19:34:57Z chrfranke $"
 
 #include "dev_interface.h" // ata_device
 
@@ -196,8 +196,9 @@ ASSERT_SIZEOF_STRUCT(ata_smart_attribute, 12);
 // 5: Selfpereserving bit
 #define ATTRIBUTE_FLAGS_SELFPRESERVING(x) (x & 0x20)
 
+// 6-15: Reserved for future use
+#define ATTRIBUTE_FLAGS_OTHER(x) ((x) & 0xffc0)
 
-// Last ten bits are reserved for future use
 
 /* ata_smart_values is format of the read drive Attribute command */
 /* see Table 34 of T13/1321D Rev 1 spec (Device SMART data structure) for *some* info */
@@ -660,10 +661,12 @@ enum ata_attr_raw_format
   RAWFMT_HEX64,
   RAWFMT_RAW16_OPT_RAW16,
   RAWFMT_RAW16_OPT_AVG16,
-  RAWFMT_RAW24_RAW24,
+  RAWFMT_RAW24_DIV_RAW24,
+  RAWFMT_RAW24_DIV_RAW32,
   RAWFMT_SEC2HOUR,
   RAWFMT_MIN2HOUR,
   RAWFMT_HALFMIN2HOUR,
+  RAWFMT_MSEC24_HOUR32,
   RAWFMT_TEMPMINMAX,
   RAWFMT_TEMP10X,
 };
@@ -705,8 +708,14 @@ private:
 };
 
 
+// Print ATA debug messages?
+extern unsigned char ata_debugmode;
+
+// Suppress serial number?
+extern bool dont_print_serial_number;
+
 // Get information from drive
-int ataReadHDIdentity(ata_device * device, struct ata_identify_device *buf);
+int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_swapped_id);
 int ataCheckPowerMode(ata_device * device);
 
 /* Read S.M.A.R.T information from drive */
@@ -764,11 +773,16 @@ int ataSmartShortCapSelfTest (ata_device * device);
 int ataSmartExtendCapSelfTest (ata_device * device);
 int ataSmartSelfTestAbort (ata_device * device);
 int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_args & args,
-                                 const ata_smart_values * sv, uint64_t num_sectors);
+                                 const ata_smart_values * sv, uint64_t num_sectors,
+                                 const ata_selective_selftest_args * prev_spans = 0);
 
 // Returns the latest compatibility of ATA/ATAPI Version the device
 // supports. Returns -1 if Version command is not supported
 int ataVersionInfo(const char ** description, const ata_identify_device * drive, unsigned short * minor);
+
+// Get World Wide Name (WWN) fields.
+// Return NAA field or -1 if WWN is unsupported.
+int ata_get_wwn(const ata_identify_device * id, unsigned & oui, uint64_t & unique_id);
 
 // If SMART supported, this is guaranteed to return 1 if SMART is enabled, else 0.
 int ataDoesSmartWork(ata_device * device);
@@ -826,7 +840,6 @@ enum ata_attr_state
 {
   ATTRSTATE_NON_EXISTING,   // No such Attribute
   ATTRSTATE_NO_NORMVAL,     // Normalized value not valid
-  ATTRSTATE_BAD_THRESHOLD,  // Threshold not valid
   ATTRSTATE_NO_THRESHOLD,   // Unknown or no threshold
   ATTRSTATE_OK,             // Never failed
   ATTRSTATE_FAILED_PAST,    // Failed in the past
@@ -835,8 +848,10 @@ enum ata_attr_state
 
 // Get attribute state
 ata_attr_state ata_get_attr_state(const ata_smart_attribute & attr,
-                                  const ata_smart_threshold_entry & thre,
-                                  const ata_vendor_attr_defs & defs);
+                                  int attridx,
+                                  const ata_smart_threshold_entry * thresholds,
+                                  const ata_vendor_attr_defs & defs,
+                                  unsigned char * threshval = 0);
 
 // Get attribute raw value.
 uint64_t ata_get_attr_raw_value(const ata_smart_attribute & attr,
@@ -910,23 +925,34 @@ std::string create_vendor_attribute_arg_list();
 int smartcommandhandler(ata_device * device, smart_command_set command, int select, char *data);
 
 // Print one self-test log entry.
-bool ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
-                                unsigned char test_status,
-                                unsigned short timestamp,
-                                uint64_t failing_lba,
-                                bool print_error_only, bool & print_header);
+// Returns:
+// -1: failed self-test
+//  1: extended self-test completed without error
+//  0: otherwise
+int ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
+                               unsigned char test_status,
+                               unsigned short timestamp,
+                               uint64_t failing_lba,
+                               bool print_error_only, bool & print_header);
 
 // Print Smart self-test log, used by smartctl and smartd.
 int ataPrintSmartSelfTestlog(const ata_smart_selftestlog * data, bool allentries,
                              unsigned char fix_firmwarebug);
 
-// Get number of sectors from IDENTIFY sector.
-uint64_t get_num_sectors(const ata_identify_device * drive);
+// Get capacity and sector sizes from IDENTIFY data
+struct ata_size_info
+{
+  uint64_t sectors;
+  uint64_t capacity;
+  unsigned log_sector_size;
+  unsigned phy_sector_size;
+  unsigned log_sector_offset;
+};
+
+void ata_get_size_info(const ata_identify_device * id, ata_size_info & sizes);
 
 // Convenience function for formatting strings from ata_identify_device.
-void format_ata_string(char * out, const char * in, int n, bool fix_swap);
-inline void format_ata_string(char * out, const unsigned char * in, int n, bool fix_swap)
-  { format_ata_string(out, (const char *)in, n, fix_swap); }
+void ata_format_id_string(char * out, const unsigned char * in, int n);
 
 // Utility routines.
 unsigned char checksum(const void * data);
