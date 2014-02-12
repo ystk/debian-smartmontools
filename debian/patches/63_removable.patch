@@ -3,7 +3,7 @@ Added the removable option by default. This indicates to smartd that it should c
 Closes: #406130
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -19,7 +19,7 @@
+@@ -18,7 +18,7 @@
  # Directives listed below, which will be applied to all devices that
  # are found.  Most users should comment out DEVICESCAN and explicitly
  # list the devices that they wish to monitor.

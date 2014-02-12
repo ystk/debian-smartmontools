@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+#include <errno.h>
 
 #include "config.h"
 
@@ -28,12 +29,13 @@
 #endif
 
 #ifdef _HAVE_CCISS
+#include "cciss.h"
 #include "int64.h"
 #include "scsicmds.h"
 #include "utility.h"
 
-const char *cciss_c_cvsid="$Id: cciss.cpp,v 1.9 2008/07/30 20:42:53 chrfranke Exp $"
-CONFIG_H_CVSID INT64_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
+const char * cciss_cpp_cvsid = "$Id: cciss.cpp 3266 2011-02-21 16:33:04Z chrfranke $"
+  CCISS_H_CVSID;
 
 typedef struct _ReportLUNdata_struct
 {

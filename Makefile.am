@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 3115 2010-06-02 17:23:05Z chrfranke $
+# $Id: Makefile.am 3338 2011-05-23 08:29:12Z samm2 $
 #
 
 @SET_MAKE@
@@ -33,7 +33,10 @@ sbin_PROGRAMS = smartd 	\
 		smartctl
 
 if ENABLE_DRIVEDB
+if OS_WIN32_MINGW
+else
 sbin_SCRIPTS = update-smart-drivedb
+endif
 endif
 
 
@@ -48,7 +51,6 @@ smartd_SOURCES =  smartd.cpp      \
                   dev_interface.h     \
                   dev_tunnelled.h     \
                   drivedb.h           \
-                  extern.h        \
                   int64.h         \
                   knowndrives.cpp \
                   knowndrives.h   \
@@ -111,7 +113,6 @@ smartctl_SOURCES= smartctl.cpp    \
                   dev_interface.h     \
                   dev_tunnelled.h     \
                   drivedb.h           \
-                  extern.h        \
                   int64.h         \
                   knowndrives.cpp \
                   knowndrives.h   \
@@ -186,6 +187,23 @@ EXTRA_smartd_SOURCES += \
 
 endif
 
+if OS_WIN32
+
+smartctl_SOURCES += \
+        csmisas.h \
+        os_win32/wmiquery.cpp \
+        os_win32/wmiquery.h
+
+smartd_SOURCES += \
+        csmisas.h \
+        os_win32/wmiquery.cpp \
+        os_win32/wmiquery.h
+
+smartctl_LDADD += -lole32 -loleaut32
+smartd_LDADD   += -lole32 -loleaut32
+
+endif
+
 if OS_SOLARIS
 # This block is required because Solaris uses manual page section 1m
 # for administrative command (linux/freebsd use section 8) and Solaris
@@ -255,46 +273,88 @@ docs_DATA = AUTHORS     \
             WARNINGS    \
             smartd.conf
 
-sysconf_DATA = smartd.conf$(smartd_suffix)
+examplesdir=$(exampledir)
+examples_DATA = \
+        examplescripts/README
+examples_SCRIPTS = \
+        examplescripts/Example1 \
+        examplescripts/Example2 \
+        examplescripts/Example3 \
+        examplescripts/Example4
 
-if SMARTD_SUFFIX
-smartd.conf$(smartd_suffix): smartd.conf
-	cp ${srcdir}/smartd.conf smartd.conf$(smartd_suffix)
-endif
+sysconf_DATA = smartd.conf
 
-EXTRA_DIST = smartd.initd.in                       \
-             smartd.8.in                           \
-             smartctl.8.in                         \
-             smartd.conf.5.in                      \
-             smartd.conf                           \
-             autogen.sh                            \
-             update-smart-drivedb.in               \
-             os_darwin/SMART.in                    \
-             os_darwin/StartupParameters.plist     \
-             os_darwin/English_Localizable.strings \
-             os_win32/installer.nsi                \
-             $(docs_DATA)
+# If modified smartd.conf exists install smartd.conf.sample instead
+install-sysconfDATA: $(sysconf_DATA)
+	$(mkinstalldirs) $(DESTDIR)$(sysconfdir)
+	@s="$(srcdir)/smartd.conf"; \
+	f="$(DESTDIR)$(sysconfdir)/smartd.conf$(smartd_suffix)"; \
+	if test -z "$(smartd_suffix)" && test -f "$$f"; then \
+	  if cmp "$$s" "$$f" >/dev/null 2>/dev/null; then :; else \
+	    echo "************************************************************"; \
+	    echo "*** $$f preserved"; \
+	    echo "*** installing smartd.conf.sample instead"; \
+	    echo "************************************************************"; \
+	    f="$$f".sample; \
+	  fi; \
+	fi; \
+	echo " $(INSTALL_DATA) $$s $$f"; \
+	$(INSTALL_DATA) "$$s" "$$f"
 
-CLEANFILES = smartd.conf.5      \
-             smartd.conf.4      \
-             smartd.8           \
-             smartd.1m          \
-             smartd.8.html      \
-             smartd.8.txt       \
-             smartctl.8         \
-             smartctl.1m        \
-             smartctl.8.html    \
-             smartctl.8.txt     \
-             smartd.conf.5.html \
-             smartd.conf.5.txt  \
-             smartd.initd       \
-             svnversion.h       \
-             update-smart-drivedb \
-             SMART
+# If smartd.conf.sample exists preserve smartd.conf
+uninstall-sysconfDATA:
+	@f="$(DESTDIR)$(sysconfdir)/smartd.conf$(smartd_suffix)"; \
+	if test -z "$(smartd_suffix)" && test -f "$$f".sample; then \
+	  echo "************************************************************"; \
+	  echo "*** $$f preserved"; \
+	  echo "*** removing smartd.conf.sample instead"; \
+	  echo "************************************************************"; \
+	  f="$$f".sample; \
+	fi; \
+	echo " rm -f $$f"; \
+	rm -f "$$f"
 
-if SMARTD_SUFFIX
-CLEANFILES += smartd.conf$(smartd_suffix)
-endif
+EXTRA_DIST = \
+        autogen.sh \
+        smartd.initd.in \
+        smartd.freebsd.initd.in \
+        smartd.8.in \
+        smartctl.8.in \
+        smartd.conf.5.in \
+        smartd.conf \
+        smartd.service.in \
+        update-smart-drivedb.in \
+        os_darwin/SMART.in \
+        os_darwin/StartupParameters.plist \
+        os_darwin/English_Localizable.strings \
+        os_win32/installer.nsi \
+        os_win32/syslogevt.c \
+        os_win32/syslogevt.mc \
+        os_win32/update-smart-drivedb.nsi \
+        os_win32/wbemcli_small.h \
+        $(docs_DATA) \
+        $(examples_DATA) \
+        $(examples_SCRIPTS)
+
+CLEANFILES = \
+        smartd.conf.5 \
+        smartd.conf.4 \
+        smartd.8 \
+        smartd.1m \
+        smartd.8.html \
+        smartd.8.txt \
+        smartctl.8 \
+        smartctl.1m \
+        smartctl.8.html \
+        smartctl.8.txt \
+        smartd.conf.5.html \
+        smartd.conf.5.txt \
+        smartd.initd \
+        smartd.freebsd.initd \
+        smartd.service \
+        svnversion.h \
+        update-smart-drivedb \
+        SMART
 
 # 'make maintainer-clean' also removes files generated by './autogen.sh'
 MAINTAINERCLEANFILES = \
@@ -391,23 +451,16 @@ install-initdDATA-darwin: $(initd_DATA)
 	  $(INSTALL_DATA) $(srcdir)/os_darwin/$${i}_Localizable.strings \
 	    $$RDIR/Localizable.strings ; \
 	done
-	@echo -e "\n\n####################################################################\n#"
-	@echo -e "#                       PLEASE READ THIS BOX!\n#"
-	@echo -e "#   To manually start the smartd daemon, run:\n#   ${initddir}/SMART/SMART start\n#"
-	@echo -e "#   To automatically start smartd on bootup, add the line:\n#   SMARTd=-YES-\n#   to /etc/hostconfig\n#"
-	@echo -e "#   smartd can now use a configuration file ${sysconfdir}/smartd.conf. Do:\n#   man smartd"
-	@echo -e "#   to learn about it. A sample configuration file can be found in:\n#   ${docdir}\n#"
-	@echo -e "####################################################################\n\n"
 
 uninstall-initdDATA-darwin:
 	rm -rf $(DESTDIR)$(initddir)/$(initd_install_name)
 
 else
 
-initd_DATA = smartd.initd
+initd_DATA = @initdfile@
 
-smartd.initd: $(srcdir)/smartd.initd.in Makefile
-	sed "s|/usr/local/sbin/|$(sbindir)/|g" $(srcdir)/smartd.initd.in > $@
+@initdfile@: $(srcdir)/@initdfile@.in Makefile
+	sed "s|/usr/local/sbin/|$(sbindir)/|g" $(srcdir)/@initdfile@.in > $@
 
 initd_install_name = smartd$(smartd_suffix)
 
@@ -416,14 +469,7 @@ initd_DATA_uninstall = uninstall-initdDATA-generic
 
 install-initdDATA-generic: $(initd_DATA)
 	$(mkinstalldirs) $(DESTDIR)$(initddir)
-	$(INSTALL_SCRIPT) $(top_builddir)/smartd.initd $(DESTDIR)$(initddir)/smartd$(smartd_suffix)
-	@echo -e "\n\n####################################################################\n#"
-	@echo -e "#                       PLEASE READ THIS BOX!\n#"
-	@echo -e "#   To manually start the smartd daemon, run:\n#   ${initddir}/smartd start\n#"
-	@echo -e "#   To automatically start smartd on bootup, run:\n#   /sbin/chkconfig --add smartd\n#"
-	@echo -e "#   smartd can now use a configuration file ${sysconfdir}/smartd.conf. Do:\n#   man smartd"
-	@echo -e "#   to learn about it. A sample configuration file can be found in:\n#   ${docdir}\n#"
-	@echo -e "####################################################################\n\n"
+	$(INSTALL_SCRIPT) $(top_builddir)/@initdfile@ $(DESTDIR)$(initddir)/smartd$(smartd_suffix)
 
 
 uninstall-initdDATA-generic:
@@ -441,6 +487,15 @@ endif
 install-initdDATA : $(initd_DATA_install)
 
 uninstall-initdDATA: $(initd_DATA_uninstall)
+
+if INSTALL_SYSTEMDUNIT
+systemdsystemunit_DATA = smartd.service
+endif
+
+smartd.service: smartd.service.in Makefile
+	sed "s|/usr/local/sbin/smartd|$(sbindir)/smartd|g; \
+	     s|/usr/local/etc/sysconfig/smartmontools|$(sysconfdir)/sysconfig/smartmontools|g" \
+	$(srcdir)/smartd.service.in > $@
 
 if ENABLE_CAPABILITIES
 MAN_CAPABILITIES = cat
@@ -473,7 +528,9 @@ MAN_FILTER = \
          s|/usr/local/share/man/|$(mandir)/|g; \
          s|/usr/local/sbin/|$(sbindir)/|g; \
          s|/usr/local/etc/rc\\.d/init.d/|$(initddir)/|g; \
-         s|/usr/local/share/doc/smartmontools/|$(docsdir)/|g;  \
+         s|/usr/local/share/doc/smartmontools/examplescripts/|!exampledir!|g; \
+         s|/usr/local/share/doc/smartmontools/|$(docsdir)/|g; \
+         s|!exampledir!|$(exampledir)/|g; \
          s|/usr/local/etc/smartd\\.conf|$(sysconfdir)/smartd.conf|g; \
          s|/usr/local/etc/smart_drivedb\\.h|$(sysconfdir)/smart_drivedb\\.h|g" | \
     $(MAN_CAPABILITIES) | \
@@ -558,28 +615,54 @@ distinst_win32 = $(PACKAGE)-$(VERSION).win$(win_bits)-setup.exe
 exedir_win32 = $(distdir_win32)/bin
 docdir_win32 = $(distdir_win32)/doc
 
-FILES_WIN32 = $(exedir_win32)/smartctl.exe \
-              $(exedir_win32)/smartctl-nc.exe \
-              $(exedir_win32)/smartd.exe \
-              $(docdir_win32)/AUTHORS.txt \
-              $(docdir_win32)/CHANGELOG.txt \
-              $(docdir_win32)/COPYING.txt \
-              $(docdir_win32)/INSTALL.txt \
-              $(docdir_win32)/NEWS.txt \
-              $(docdir_win32)/README.txt \
-              $(docdir_win32)/TODO.txt \
-              $(docdir_win32)/WARNINGS.txt \
-              $(docdir_win32)/smartd.conf \
-              $(docdir_win32)/smartctl.8.html \
-              $(docdir_win32)/smartctl.8.txt \
-              $(docdir_win32)/smartd.8.html \
-              $(docdir_win32)/smartd.8.txt \
-              $(docdir_win32)/smartd.conf.5.html \
-              $(docdir_win32)/smartd.conf.5.txt
+EXEFILES_WIN32 = \
+        $(exedir_win32)/smartctl.exe \
+        $(exedir_win32)/smartctl-nc.exe \
+        $(exedir_win32)/smartd.exe
 
-CLEANFILES += $(FILES_WIN32) $(exedir_win32)/syslogevt.exe \
-              smartctl-nc.exe smartctl-nc.exe.tmp \
-              distdir.mkdir syslogevt.check
+if OS_WIN32_WINDMC
+EXEFILES_WIN32 += \
+        $(exedir_win32)/syslogevt.exe
+endif
+
+if ENABLE_DRIVEDB
+if OS_WIN32_NSIS
+EXEFILES_WIN32 += \
+        $(exedir_win32)/update-smart-drivedb.exe
+endif
+endif
+
+FILES_WIN32 = \
+        $(EXEFILES_WIN32) \
+        $(docdir_win32)/AUTHORS.txt \
+        $(docdir_win32)/CHANGELOG.txt \
+        $(docdir_win32)/COPYING.txt \
+        $(docdir_win32)/INSTALL.txt \
+        $(docdir_win32)/NEWS.txt \
+        $(docdir_win32)/README.txt \
+        $(docdir_win32)/TODO.txt \
+        $(docdir_win32)/WARNINGS.txt \
+        $(docdir_win32)/checksums.txt \
+        $(docdir_win32)/smartd.conf \
+        $(docdir_win32)/smartctl.8.html \
+        $(docdir_win32)/smartctl.8.txt \
+        $(docdir_win32)/smartd.8.html \
+        $(docdir_win32)/smartd.8.txt \
+        $(docdir_win32)/smartd.conf.5.html \
+        $(docdir_win32)/smartd.conf.5.txt
+
+if ENABLE_DRIVEDB
+FILES_WIN32 += \
+        $(exedir_win32)/drivedb.h
+endif
+
+CLEANFILES += \
+        $(FILES_WIN32) \
+        smartctl-nc.exe smartctl-nc.exe.tmp \
+        syslogevt.exe syslogevt.h syslogevt.o \
+        syslogevt.res.o syslogevt.rc syslogevt_*.bin \
+        update-smart-drivedb.exe \
+        distdir.mkdir
 
 # Textfile converter from package cygutils or tofrodos
 # Note: Only use without options to be compatible with both packages
@@ -595,48 +678,57 @@ install-win32: $(distinst_win32)
 
 installer-win32: $(distinst_win32)
 
-distdir-win32: distdir.mkdir $(FILES_WIN32) syslogevt.check
+distdir-win32: distdir.mkdir $(FILES_WIN32)
 
-$(distzip_win32): distdir.mkdir $(FILES_WIN32) syslogevt.check
+$(distzip_win32): distdir.mkdir $(FILES_WIN32)
 	@rm -fv $(distzip_win32)
-	cd $(distdir_win32) && zip -9Dr ../$(distzip_win32) .
+	cd $(distdir_win32) && zip -9 ../$(distzip_win32) bin/* doc/*
+	md5sum $@ > $@.md5
+	sha1sum $@ > $@.sha1
+	sha256sum $@ > $@.sha256
 
-# Build NSIS installer, try to locate makensis in default location first
+if OS_WIN32_NSIS
+# Build NSIS installer
 # Note: Only option character '-' is also compatible with Linux version of makensis
-$(distinst_win32): $(srcdir)/os_win32/installer.nsi distdir.mkdir $(FILES_WIN32) syslogevt.check
-	@makensis="$(MAKENSIS)"; if [ -z "$$makensis" ]; then \
-	  if [ ! -z "$$PROGRAMFILES" ] && "$$PROGRAMFILES/NSIS/makensis" -VERSION >/dev/null 2>&1; then \
-	    makensis="$$PROGRAMFILES/NSIS/makensis"; \
-	  elif makensis -VERSION >/dev/null 2>&1; then \
-	    makensis=makensis; \
-	  else \
-	    echo 'makensis: command not found. Please download and install NSIS' 1>&2; \
-	    echo 'from http://nsis.sourceforge.net/Download' 1>&2; exit 1; \
-	  fi; \
-	fi; \
-	date=`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`; \
+$(distinst_win32): os_win32/installer.nsi distdir.mkdir $(FILES_WIN32)
+	@date=`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`; \
 	rev=`sed -n 's,^.*REV[^"]*"\([^"]*\)".*$$,r\1,p' svnversion.h`; \
 	verstr="$(PACKAGE_VERSION) $$date $$rev "$(BUILD_INFO); \
-	echo "$$makensis -V2 -NOCD -DINPDIR=$(distdir_win32) -DOUTFILE=$(distinst_win32) -DVERSTR='$$verstr' $(srcdir)/os_win32/installer.nsi"; \
-	"$$makensis" -V2 -NOCD -DINPDIR="$(distdir_win32)" -DOUTFILE="$(distinst_win32)" -DVERSTR="$$verstr" "$(srcdir)/os_win32/installer.nsi"
+	echo "'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) -DOUTFILE=$@ -DVERSTR='$$verstr' $<"; \
+	'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) -DOUTFILE=$@ -DVERSTR="$$verstr" $<
+	md5sum $@ > $@.md5
+	sha1sum $@ > $@.sha1
+	sha256sum $@ > $@.sha256
+
+# Build drivedb.h update tool
+update-smart-drivedb.exe: os_win32/update-smart-drivedb.nsi
+	"$(MAKENSIS)" -V2 -NOCD -DBRANCH=$(DRIVEDB_BRANCH) $<
+
+else
+$(distinst_win32):
+	@echo "makensis: command not found. Please install NSIS from http://nsis.sourceforge.net/" 1>&2
+	@exit 1
+endif
 
 cleandist-win32:
-	rm -rf $(distdir_win32) distdir.mkdir syslogevt.check
+	rm -rf $(distdir_win32) distdir.mkdir
 
 distdir.mkdir:
 	@test -d $(exedir_win32) || mkdir -pv $(exedir_win32)
 	@test -d $(docdir_win32) || mkdir -pv $(docdir_win32)
 	touch $@
 
-syslogevt.check:
-	@if [ -f $(srcdir)/os_win32/syslogevt.exe ]; then \
-	  cp -pv $(srcdir)/os_win32/syslogevt.exe $(exedir_win32)/syslogevt.exe; \
-	 else echo "Warning: $(srcdir)/os_win32/syslogevt.exe missing."; fi
-	touch $@
-
 $(exedir_win32)/%.exe: %.exe
 	cp -p $< $@
 	if test -n '$(STRIP)'; then $(STRIP) -s $@; else strip -s $@; fi
+	touch -r $< $@
+
+# strip would break NSIS integrity check
+$(exedir_win32)/update-smart-drivedb.exe: update-smart-drivedb.exe
+	cp -p $< $@
+
+$(exedir_win32)/%.h: $(srcdir)/%.h
+	$(UNIX2DOS) < $< > $@
 	touch -r $< $@
 
 $(docdir_win32)/%.html: %.html
@@ -655,6 +747,10 @@ $(docdir_win32)/%.conf: $(srcdir)/%.conf
 	$(UNIX2DOS) < $< > $@
 	touch -r $< $@
 
+$(docdir_win32)/checksums.txt: $(EXEFILES_WIN32)
+	(cd $(exedir_win32) && md5sum *.exe && sha1sum *.exe && sha256sum *.exe) \
+	| $(UNIX2DOS) > $@
+
 # Build non-console version of smartctl for GSmartControl.
 # The script below changes the word at offset 220 (Subsystem) from 3
 # (Console) to 2 (GUI) in a copy of smartctl.exe.
@@ -671,19 +767,32 @@ smartctl-nc.exe: smartctl.exe
 	  else echo "EXE patch failed"; exit 1; fi
 	mv -f $@.tmp $@
 
+if OS_WIN32_WINDMC
+# Build syslogevt.exe event message file tool
+
+syslogevt.exe: syslogevt.o syslogevt.res.o
+	$(LINK) $^
+
+syslogevt.o: os_win32/syslogevt.c syslogevt.rc
+	$(CC) -c -I. -Os -o $@ $<
+
+syslogevt.res.o: syslogevt.rc
+	$(WINDRES) $< $@
+
+syslogevt.rc: os_win32/syslogevt.mc
+	$(WINDMC) -b $<
+endif
 
 # Build {config,svnversion}_vc8.h for MSVC8 from MinGW {config,svnversion}.h
 
 config-vc8: $(srcdir)/os_win32/config_vc8.h  $(srcdir)/os_win32/svnversion_vc8.h
 
-$(srcdir)/os_win32/config_vc8.h: config.h
+$(srcdir)/os_win32/config_vc8.h: config.h Makefile
 	sed '1i/* config_vc8.h.  Generated from config.h by Makefile.  */' $< | \
-	sed 's,^#define HAVE_\(ATTR_PACKED\|INTTYPES_H\|STDINT_H\|STRINGS_H\|STRTOULL\|U*INT64_T\|UNISTD_H\|WORKING_SNPRINTF\) 1$$,/* #undef HAVE_\1 */,' | \
-	sed 's,i.86-pc-mingw32,i686-pc-win32vc8,' > $@
+	sed 's,^#define HAVE_\(ATTR_PACKED\|INTTYPES_H\|[DK_]*NTDDDISK_H\|STDINT_H\|STRINGS_H\|STRTOULL\|U*INT64_T\|UNISTD_H\|WORKING_SNPRINTF\) 1$$,/* #undef HAVE_\1 */,' | \
+	sed 's,^\(#define SMARTMONTOOLS_BUILD_HOST "[^-]*\)[^"]*,\1-pc-win32vc8,' > $@
 
 $(srcdir)/os_win32/svnversion_vc8.h: svnversion.h
 	cp svnversion.h $@
 
 endif
-
-SUBDIRS= . examplescripts

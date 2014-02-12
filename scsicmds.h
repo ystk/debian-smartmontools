@@ -32,12 +32,11 @@
 #ifndef SCSICMDS_H_
 #define SCSICMDS_H_
 
-#define SCSICMDS_H_CVSID "$Id: scsicmds.h 3095 2010-04-30 12:33:27Z dpgilbert $\n"
+#define SCSICMDS_H_CVSID "$Id: scsicmds.h 3302 2011-03-25 23:04:36Z dpgilbert $\n"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 /* #define SCSI_DEBUG 1 */ /* Comment out to disable command debugging */
 
@@ -78,6 +77,21 @@
 #endif
 #ifndef READ_DEFECT_10
 #define READ_DEFECT_10  0x37
+#endif
+#ifndef START_STOP_UNIT
+#define START_STOP_UNIT  0x1b
+#endif
+#ifndef REPORT_LUNS
+#define REPORT_LUNS  0xa0
+#endif
+#ifndef READ_CAPACITY_10
+#define READ_CAPACITY_10  0x25
+#endif
+#ifndef READ_CAPACITY_16
+#define READ_CAPACITY_16  0x9e
+#endif
+#ifndef SAI_READ_CAPACITY_16    /* service action for READ_CAPACITY_16 */
+#define SAI_READ_CAPACITY_16  0x10
 #endif
 
 #ifndef SAT_ATA_PASSTHROUGH_12
@@ -284,12 +298,23 @@ Documentation, see http://www.storage.ibm.com/techsup/hddtech/prodspecs.htm */
 
 class scsi_device;
 
+// Print SCSI debug messages?
+extern unsigned char scsi_debugmode;
+
 void scsi_do_sense_disect(const struct scsi_cmnd_io * in,
                           struct scsi_sense_disect * out);
 
 int scsiSimpleSenseFilter(const struct scsi_sense_disect * sinfo);
 
 const char * scsiErrString(int scsiErr);
+
+int scsi_vpd_dev_id_iter(const unsigned char * initial_desig_desc,
+                         int page_len, int * off, int m_assoc,
+                         int m_desig_type, int m_code_set);
+
+int scsi_decode_lu_dev_id(const unsigned char * b, int blen, char * s,
+                          int slen, int * transport);
+
 
 /* STANDARD SCSI Commands  */
 int scsiTestUnitReady(scsi_device * device);
@@ -326,6 +351,14 @@ int scsiReceiveDiagnostic(scsi_device * device, int pcv, int pagenum, UINT8 *pBu
 int scsiReadDefect10(scsi_device * device, int req_plist, int req_glist, int dl_format,
                      UINT8 *pBuf, int bufLen);
 
+int scsiReadCapacity10(scsi_device * device, unsigned int * last_lbp,
+                       unsigned int * lb_sizep);
+
+int scsiReadCapacity16(scsi_device * device, UINT8 *pBuf, int bufLen);
+
+uint64_t scsiGetSize(scsi_device * device, unsigned int * lb_sizep);
+
+
 /* SMART specific commands */
 int scsiCheckIE(scsi_device * device, int hasIELogPage, int hasTempLogPage, UINT8 *asc,
                 UINT8 *ascq, UINT8 *currenttemp, UINT8 *triptemp);
@@ -348,8 +381,8 @@ int scsiFetchControlGLTSD(scsi_device * device, int modese_len, int current);
 int scsiSetControlGLTSD(scsi_device * device, int enabled, int modese_len);
 int scsiFetchTransportProtocol(scsi_device * device, int modese_len);
 
-/* T10 Standard IE Additional Sense Code strings taken from t10.org */
 
+/* T10 Standard IE Additional Sense Code strings taken from t10.org */
 const char* scsiGetIEString(UINT8 asc, UINT8 ascq);
 int scsiGetTemp(scsi_device * device, UINT8 *currenttemp, UINT8 *triptemp);
 

@@ -1,6 +1,6 @@
 CHANGELOG for smartmontools
 
-$Id: CHANGELOG 3124 2010-07-12 19:21:00Z chrfranke $
+$Id: CHANGELOG 3365 2011-06-09 18:47:31Z chrfranke $
 
 The most recent version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/CHANGELOG?view=markup
@@ -39,9 +39,686 @@ Maintainers / Developers Key (alphabetic order):
 [SZ]  Shengfeng Zhou
 [RZ]  Richard Zybert
 
-NOTES FOR FUTURE RELEASES: see TODO file.
-
 <DEVELOPERS: ADDITIONS TO THE CHANGE LOG GO JUST BELOW HERE, PLEASE>
+
+smartmontools 5.41 2011-06-09
+
+  [MS] drivedb.h: revert attribute 190 to default for Samsung SSD controllers,
+       some 470 series SSDs seem to have some temperature information at
+       this location.
+
+  [MS] drivedb.h update:
+       add attribute details for Samsung controllers, centralize entries
+
+  [MS] drivedb.h update:
+       add attribute details for JMicron JMF61x controllers
+
+  [CF] drivedb.h update:
+       - SandForce Driven SSDs: Add OCZ DENEVA
+
+  [CF] os_win32.cpp: Ignore vendor ID "ATA" if returned by
+       IOCTL_STORAGE_QUERY_PROPERTY.
+
+  [CF] Add ATA NCQ commands to error register decoding.
+
+  [CF] Re-enable '--with-initscriptdir=auto' as default.
+       Change search for initddir and systemdsystemunitdir such that
+       default ./configure does never overwrite system files.
+
+  [MS] drivedb.h update:
+       disentangle Transcend SSD versions
+
+  [MS] drivedb.h update:
+       add attribute details for Crucial C300
+
+  [MS] smartd.initd.in:
+       fix for debian, cleanup. Based on patch of CF.
+
+  [AS] --with-initscriptdir default changed to "no" from "auto" to avoid 
+       filesystem pollution.
+
+  [MS] drivedb.h cleanup:
+       harmonize family names, add AF information into name
+
+  [MS] drivedb.h update:
+       - OCZ Vertex 3
+       - Seagate Barracuda Green 1TB variant
+
+  [CF] Windows: Avoid '%n' printf format specifier because it is always
+       disabled in recent versions of msvcrt.dll.  This fixes truncation
+       of smartd warning email (ticket #174).
+
+  [MS] smartd.initd.in:
+       cleanup, provide targets "reload" and "report" for all platforms
+
+  [CF] drivedb.h update:
+       - JMicron based SSD (JMicron JMF602?): rename from
+         Kingston SSDNow V Series, move Transcend IDE and SATA
+         entries to here.
+
+  [CF] Support ':BYTEORDER' for all attribute print formats.
+
+  [CF] drivedb.h update:
+       - Kingston SSDNow V Series SSDs (ticket #171)
+
+  [CF] Increase size of drive database option parse buffer
+       to allow long '-v N,FORMAT:BYTEORDER,NAME' options.
+
+  [MS] drivedb.h update:
+       - Western Digital Scorpio Blue Advanced Format variants
+
+  [MS] drivedb.h update:
+       correct typo for Cowon iAudio X5
+
+  [MS] drivedb.h USB updates:
+       - Maxtor OneTouch 200GB (unsupported)
+       - LaCie Little Disk
+
+  [AS] FreeBSD: Added native rc.conf style script to the package. 
+       Modifications to the configure script to use correct template and
+       path.
+
+  [AS] freebsd_os.cpp:
+       Fix memory leak in the ata detection code (added free())
+       Using bzero in cam code to clear structure (fixing varnish varning)
+
+  [MS] drivedb.h update:
+       Kingston SSDNow S100 Series
+
+  [MS] drivedb.h USB update:
+       - Samsung S1 Portable
+       - LaCie rikiki USB 3.0
+       - Seagate FreeAgent GoFlex USB 3.0
+       - Cowon iAudio X5
+       - Oxford OXU921DS chip (unsupported)
+
+  [CF] Windows: Add debug output of SCSI sense data.
+
+  [CF] Add 'smartd.service' file for systemd.
+       Add configure option '--with-systemdsystemunitdir'.
+       Disable initd script if systemd is used.
+
+  [MS] drivedb.h update:
+       - Western Digital AV-25 family
+
+  [MS] drivedb.h update:
+       JMicron based SSDs: Add
+         Kingston SSDNow V, Kingston SSDNow V+100, TOSHIBA THNS128GG4BBAA,
+         APPLE SSD TS*, ADATA S596 Turbo
+
+  [CF] drivedb.h update:
+       - Intel 510 Series SSDs (ticket #170)
+
+  [CF] smartctl: Don't issue SMART DISABLE command to 3ware controllers
+       when the port number was not specified (ticket #165).
+
+  [CF] Use get_errmsg() from device instead of errno or syserror() for
+       printing error messages.
+
+  [MS] drivedb.h updates:
+       - G.Skill FALCON II SSD (Indilinx)
+       - HP 250GB SATA disk VB0250EAVER
+       - SAMSUNG SpinPoint M5 HM160HC
+       - SAMSUNG SpinPoint MT2 HM100UI
+       - SAMSUNG HM100UX
+       - Hitachi Deskstar 5K3000 Series
+       - Seagate Barracuda Green (Adv. Format)
+       - Seagate Barracuda XT 3TB variant
+       - Western Digital RE4 Serial ATA family
+       - Western Digital Caviar Green WD20EACS
+       - Western Digital Caviar Black family, SATA 3.0 variants
+       - QUANTUM FIREBALLlct20 10
+       - QUANTUM FIREBALLP AS60.0
+
+  [CF] drivedb.h update:
+       - SandForce Driven SSDs: Add more OCZ SF-1200 and SF-1500 based drives
+
+       Thanks to Sudhir Verman from OCZ Technology for providing this info.
+
+  [CF] drivedb.h USB updates:
+       - Seagate Expansion External (0x0bc2:0x3300) (Debian bug 621411)
+       - ASMedia USB 3.0 (0x174c:0x55aa) (unsupported)
+
+  [CF] smartctl.8.in: Clarify '-t vendor,N' (ticket #169).
+       Update Intel info (ticket #168).
+
+  [CF] drivedb.h update:
+       - Intel 320 Series SSDs (ticket #168)
+
+  [CF] smartctl: Always print sector size in '-i' output (ticket #166).
+
+  [CF] os_linux.cpp: Shorten version string.
+
+  [CF] smartctl: Add option '-f brief' to select new attribute output
+       format.  This format includes additional attribute flags
+       (ticket #109) and fits in 80 columns (ticket #158).
+       This format is now the default for '-x'.
+
+  [CF] smartd: Log changes of offline data collection status if
+       '-l selftest' is specified.
+
+  [CF] drivedb.h updates:
+       - SandForce Driven SSDs: Add ADATA S599 64GB,
+         OWC Mercury Extreme Pro
+       - Kingston branded X25-V SSDs (ticket #156)
+       - Transcend SATA Solid State Drive: Truncate attribute name
+
+  [CF] drivedb.h USB updates:
+       - LaCie (0x059f:0x1029) (ticket #153)
+       - WD My Book Office Edition (0x1058:0x1101)
+       - JMicron USB 3.0 (0x152d:0x0539)
+
+  [CF] drivedb.h USB update:
+       - Verbatim Pocket Hard Drive (0x18a5:0x0227) (ticket #159)
+
+  [CF] drivedb.h update:
+       - SAMSUNG SpinPoint N3U-3 (USB, 4KiB LLS) (ticket #159)
+
+  [CF] Add support for ATA Long Logical Sectors (LLS) (ticket #159).
+
+  [DG] [SCSI] smartctl: (re-)use capacity formatting in utility.cpp
+
+  [CF] configure.in: Remove '-Wno-format' for MinGW.
+       Recent MinGW versions support MSVCRT printf format strings.
+
+  [CF] Print ATA disk capacity with SI prefix.
+       Add/move capacity formatting to utility.cpp
+
+  [CF] Add error messages if ATA pass-through does not return required
+       ATA output registers (for SMART RETURN STATUS, GET POWER MODE).
+       This prevents misleading 'SMART Status command failed' messages
+       (see ticket #155).
+
+  [CF] Fix WWN support check for older ATA-7 disks.
+
+  [DG] [SCSI] smartctl: add 'Logical Unit id' from the Device
+       Identification VPD page (0x83)
+
+  [DG] [SCSI] smartctl: add 'User Capacity' (disk size) in human
+       readable form
+
+  [CF] smartctl, smartd: Print World Wide Name (WWN) of ATA device.
+
+  [CF] smartctl: Print more specific error message if IDENTIFY DEVICE
+       failed (ticket #61).  Add check for empty IDENTIFY data.
+
+  [CF] Windows installer: Add help message box.
+
+  [CF] Windows installer: Request admin rights, select 'All Users'
+       section.  This fixes shortcut removal under Vista and later.
+       Add '/SO' option to select components for unattended install.
+       Patch was provided by József Fejes.
+
+  [CF] Windows: Add update-smart-drivedb.nsi NSIS script to build
+       drivedb.h update tool.
+
+  [CF] Windows: Move search for NSIS compiler from Makefile.am to
+       configure.in.
+
+  [CF] update-smart-drivedb.in: Move DRIVEDB_BRANCH name creation
+       from script to configure.in.
+
+  [CF] os_linux.cpp: Replace printf() by pout().  Disable unused
+       function dumpdata().
+
+  [CF] Windows: Include CSMI (for Intel RAID) in default DEVICESCAN.
+
+  [CF] configure.in: Remove info messages about old defaults.
+
+  [CF] drivedb.h: Set unneeded USB bcdDevice patterns to empty.
+
+  [CF] Rework USB ID drivedb search.  Stop search at first matching
+       entry with empty bcd_device pattern.
+
+  [CF] Move handling of '-F swapid' from formatting to identity read
+       function.  Remove unneeded 'fix_swapped_id' parameters.
+
+  [CF] smartd: Log warning from drive database if present.
+       smartctl: Do not search drive database twice.
+
+  [MS] drivedb.h USB updates:
+       - Samsung S2 Portable variant (0x04e8:0x1f08)
+       - Lacie rikiki (0x059f:0x102a)
+       - Toshiba Stor.E Steel series (0x0930:0x0b11)
+       - Super Top generic enclosure (0x14cd:0x6116)
+
+  [CF] Let constructor of regular_expression throw on error by default.
+
+  [CF] smartd: Preserve last selective self-test span in '.state' file
+       and use it if the selective self-test log was cleared (ticket #88).
+
+  [CF] smartctl --scan-open: Make output compatible with smartd.conf
+       (ticket #108).  Fix possible crash if autodetect_open() returns
+       new object.
+
+  [CF] do_release: Re-add signing of tarball.
+
+  [CF] os_linux.cpp: Change '-d sat' to '-d sat,12' for USB only if
+       kernel is older than 2.6.29.  Add kernel release to version info.
+
+  [CF] smartd: Add '-l scterc,READTIME,WRITETIME' directive (ticket #150).
+
+  [CF] smartctl: Fix exit status of '-l xerror' and '-l xselftest'
+       (ticket #144).
+
+  [CF] smartd: Use '-M daily' as default if state persistence is enabled.
+       This avoids that emails are suppressed forever (ticket #35).
+
+  [CF] smartd: Log identify information of each ATA device.
+
+  [CF] smartd: Disable '-C' and '-U' monitoring if raw values are
+       very large (ticket #148).
+
+  [CF] smartd: Write reserved attribute byte to '.state' file
+       (ticket #118).
+
+  [MS] drivedb.h USB updates:
+       - Seagate FreeAgent Go Flex Desk USB 3.0
+       - Toshiba Canvio 500GB
+
+  [MS] drivedb.h USB updates:
+       - Freecom HD 500GB (0x07ab:0xfcda)
+       - Generic JMicron adapter (0x152d:0x2337)
+       - RaidSonic ICY BOX IB-110StU3-B (0x1759:0x500[02])
+       - Connectland BE-USB2-35BP-LCM (0x040d:0x6204)
+       - Freecom Classic HD 120GB (0x07ab:0xfccd)
+       - OCZ THROTTLE OCZESATATHR8G (0x152d:0x0602)
+       - Vantec NST-400MX-SR (0x1a4a:0x1670)
+       - Intenso Memory Station 2.5" (0x13fd:0x1840)
+
+  [CF] Don't report failed self-tests outdated by a newer successful
+       extended self-test as errors (ticket #147).
+       This affects smartctl exit status and smartd syslog output and
+       warning email.  Only implemented for ATA.
+
+  [CF] os_linux.cpp: Don't use buffer of size PATH_MAX for the result
+       of realpath().  This also fixes compilation on Debian Lenny.
+
+  [CF] smartd man pages: Add some missing [ATA only].
+
+  [CF] os_linux.cpp: Dereference symlinks before guess of device type
+       (ticket #146).  Minor rework of autodetect_smart_device().
+
+  [CF] smartctl -l scterc: Don't get ERC if only set is requested.
+       This prevent misleading error messages if ATA output registers
+       are not supported.
+
+  [CF] Windows: Prevent warnings from gcc 4.5.1.
+
+  [CF] os_netbsd.cpp, os_openbsd.cpp: Add missing <errno.h>
+
+  [CF] os_freebsd.cpp: Add missing <errno.h>
+
+  [CF] dev_legacy.cpp: Add missing <errno.h>
+
+  [CF] Linux megaraid: Fix pass-through of non-data ATA commands
+       (ticket #149).
+       Only reject commands which require ATA output registers.
+
+  [CF] configure.in: Remove '-fno-strict-aliasing' from CXXFLAGS.
+       This reverts r2992 (see ticket #23).
+
+  [CF] Linux megaraid: Avoid strict-aliasing warnings.
+       Patch was provided by Stanislav Brabec (2009-06-03).
+
+  [MS] Make functions without prototypes static.
+
+  [MS] Remove unnecessary includes, move inclusion of errno.h from scsicmds.h
+       to the appropriate *.cpp files. Add cciss.h to cciss.cpp.
+
+  [MS] os_linux.cpp: rename variables to please "-Wshadow"
+       utility.cpp: remove unused variable "start"
+       os_win32/syslogevt.c: plug resource leak
+
+  [CF] Rename variables to prevent warnings if '-Wshadow' is set.
+       Remove unnecessary includes.  Fix some comments.
+
+  [CF] drivedb.h updates:
+       - Intel X18-M/X25-M/X25-V G2 SSDs: Add firmware bug warning
+       - Samsung SpinPoint M6
+       - Samsung SpinPoint M7E (AFT)
+       - Samsung PM800 SSDs
+       - Samsung PM810 (470 series) SSDs
+
+  [CF] Windows: Add experimental CSMI support for disks behind Intel Matrix
+       RAID driver. Accessed through new device names '/dev/csmi[0-9],N'.
+       Experimental DEVICESCAN can be enabled by '-d csmi'.
+
+  [MS] - ataprint.cpp: adjust print format for insanely large
+           offline data collection times (e.g. WD drives).
+       - getopt: change config.h #include format from angle brackets to quotes
+
+  [MS] drivedb.h update:
+       - Fujitsu MJA2 BH series
+       - Toshiba MK..59GSXP series (Adv. Format)
+       - Toshiba MK..59GSM series (Adv. Format)
+       - Western Digital Caviar Blue SATA 3.0 variants
+       - Seagate Barracuda XT
+
+  [CF] smartctl: Print help message if no option is specified (ticket #39).
+       Don't issue any other ATA command if only '-n POWERMODE' is specified.
+
+  [CF] smartd: Output multiple lines via separate syslog(3) calls
+       (ticket #135).
+
+  [CF] smartctl: Add new ATA minor revisions and log addresses from ACS-2
+       revision 4a.  Replace runtime asserts by compile time asserts.
+
+  [CF] smartd: Remove "default: /var/log/messages" hint from warning mail.
+       This obsoletes Debian patch 60_remove-redhatism.diff.
+
+  [CF] Windows: Include USB devices in DEVICESCAN (ticket #116).
+
+  [CF] Windows: Use direct WMI access to detect USB IDs (ticket #115).
+       This replaces 'wmic' runs and speeds up USB detection.
+
+  [CF] configure.in: Rework platform-specific settings.
+
+  [CF] configure.in: Remove some no longer used settings:
+       -lselinux (duplicate), NEED_SOLARIS_ATA_CODE, OS_FREEBSD.
+
+  [CF] Makefile.am: Remove SUBDIRS. Recursive targets are no longer used.
+
+  [CF] Use log directory to check for old error and self-test log
+       support (ticket #89).
+
+  [CF] drivedb.h USB update:
+       - WD My Book Essential 3TB USB 3.0
+
+  [CF] Fix usb header includes for DragonFly BSD (ticket #141).
+
+  [CF] smartctl: Print physical and logical sector sizes (ticket #62).
+
+  [CF] drivedb.h updates:
+       - Fujitsu MHT: Add AC variant
+       - Fujitsu MHW2 AC
+       - Samsung SpinPoint T166: Needs '-v 197,increasing'
+       - Seagate Barracuda 7200.11: Add firmware SD81 as buggy
+       - WD Scorpio Blue EIDE: Add 320GB
+
+  [CF] drivedb.h USB updates:
+       - Samsung S2 Portable (ticket #136)
+       - Move Verbatim 0x152d:0x2351 to JMicron section
+
+  [AS] drivedb.h updates:
+       - Verbatim Portable Hard Drive eSATA & USB 2.0 Combo 500GB
+
+  [CF] Happy New Year! Update copyright year in version info.
+
+  [CF] drivedb.h updates:
+       - Hitachi Deskstar 7K3000
+       - Hitachi Travelstar 7K320: Add ...362 variant
+       - Seagate Maxtor DiamondMax 21: Add STM3250310AS
+       - Toshiba 2.5" HDD MK..65GSX
+       - WD Caviar Green (Adv. Format): Add 750GB, 2.5TB, 3TB
+
+  [CF] drivedb.h USB updates:
+       - Micron USB SSD (unsupported, ticket #133)
+       - Samsung G2 Portable (ticket #132)
+       - Samsung Story Station 3.0 (ticket #130)
+       - Seagate FreeAgent GoFlex (ticket #131)
+
+  [CF] update-smart-drivedb.in: Add workaround for OpenBSD shell bug:
+       'set -e; if eval false; ...' aborts script (ticket #128).
+
+  [CF] update-smart-drivedb.in: Add platform specific download tools:
+       'fetch' on FreeBSD (ticket #127), 'ftp' on OpenBSD.
+
+  [CF] drivedb.h USB updates:
+       - JMicron 0x152d:0x2509
+       - WD My Passport 0730
+
+  [CF] drivedb.h updates:
+       - Samsung SpinPoint F3 EG: Add 2TB
+       - SandForce Driven SSDs: Add ADATA S599, SuperTalent TeraDrive CT
+       - Seagate Constellation (SATA)
+       - Seagate Constellation ES (SATA)
+       - WDC My Passport: Add WD5000BMVW
+
+  [CF] drivedb.h update:
+       - Samsung SpinPoint F4 EG: Add 1.5TB, update firmware bug warning.
+
+  [DG] [SCSI] Fix log page sanity check problem if the DS bit set
+       in response. Caused '-l background' to fail.
+
+  [CF] drivedb.h updates:
+       - Samsung SpinPoint F4 EG: Warning about bad blocks
+
+  [CF] update-smart-drivedb.in: Replace ERE by BRE.  Script does no
+       longer require GNU sed (Ticket #126).
+
+  [DG] In '-r ioctl' show vendor specific SCSI commands as such rather
+       than 'unknown'.
+
+  [CF] Add check for CompactFlash Signature in ATA IDENTIFY data.
+       This avoids that older CF microdrives are detected as ATAPI
+       devices (Ticket #125).
+
+  [CF] drivedb.h updates:
+       - Apple SSDs TS*
+       - Crucial RealSSD C300 Series
+       - Kingston SSDNow V Series
+       - Indilinx Barefoot based SSDs: Add OCZ-ONYX
+       - SandForce Driven SSDs: Add OCZ VERTEX2-PRO
+       - Transcend CompactFlash Cards: Add TS4GCF133
+
+  [CF] Windows installer: Add missing quotes in smartctl-run.bat
+       and smartd-run.bat (Ticket #124).
+
+  [CF] OpenBSD: Fix DEVICESCAN for OpenBSD >= 4.8 (Ticket #123).
+
+  [CF] daemon_win32.cpp: Remove duplicate assignment (Ticket #120).
+
+  [CF] Makefile.am: Do not overwrite existing smartd.conf file
+       (Ticket #122).  If smartd.conf exists and differs from the
+       default then smartd.conf.sample is installed instead
+       If smartd.conf.sample exists on uninstall then smartd.conf is
+       preserved.
+
+  [CF] Linux megaraid: Fix segfault on non-data commands (Ticket #78).
+       The /dev/megaraid_sas_ioctl_node driver does not allow
+       sge_count = 1 and sgl[0].iov_len = 0.
+
+  [CF] Remove EXPERIMENTAL notes for features already present
+       in 5.39.
+
+  [CF] Rework '-d TYPE' documentation on man pages.
+
+  [CF] drivedb.h updates:
+       - Seagate Maxtor DiamondMax 21: Add 80GB
+       - Western Digital Caviar Black: Add 1TB/64MB
+
+  [CF] drivedb.h USB updates:
+       - iRiver iHP-120/140 (Ticket #119)
+       - ASMedia ASM1051
+
+  [CF] Makefile.am: Handle examplescripts in main Makefile.
+       Remove 'examplescripts/Makefile.am'.
+
+  [CF] configure.in: New option '--with-exampledir' allows to change
+       path of 'DOCDIR/examplescripts' directory.
+       (Debian package uses '/usr/share/doc/smartmontools/examples')
+
+  [CF] Replace global 'con->dont_print/...' variables by 'printing_is_*'.
+       Remove global 'con'trol pointer.  Remove file 'extern.h'.
+
+  [CF] Replace global 'con->reportata/scsiioctl' variables by '*_debugmode'.
+
+  [CF] Replace global 'con->conservative/permissive' variables by
+       'failuretest_*'.  Move failuretest() function to smartctl.cpp.
+
+  [CF] Remove unused CONTROLLER_* defines.
+
+  [CF] Remove unused controller support from dev_legacy adapter module.
+
+  [CF] Make 'debugmode' variable local to smartd.cpp.
+
+smartmontools 5.40 2010-10-16
+
+  [CF] examplescripts/Example3: Use stdin to pass message to 'wall'
+       command (ticket #114).
+
+  [CF] smartd: Fix setting of SMARTD_DEVICE and SMARTD_DEVICETYPE
+       environment variables (ticket #113).
+       Regression was introduced by rework of smartd data structures.
+       SMARTD_DEVICE is now set to the plain device name.
+       SMARTD_DEVICETYPE is now set to 'auto' if no '-d' directive is
+       specified.  Smartctl now accepts '-d auto' for this purpose.
+
+  [CF] Remove "Lifetime" from Min/Max temperature attribute output
+       (ticket #111).  Interval is device specific.
+
+  [CF] configure.in: Print resource/message compiler info for Windows only.
+
+  [CF] FreeBSD: Rework get_dev_names_cam() to support more than 26 devices.
+
+  [CF] drivedb.h updates:
+       - Seagate Barracuda 7200.10: Add 360GB
+       - USB: Iomega MDHD-UE
+       Patch provided by Rob Marissen.
+
+  [DL] Standby mode not detected properly on FreeBSD (ticket #91).
+
+  [MS] os_linux.cpp: fix "gcc -flto" build error by including stddef.h
+
+  [CF] drivedb.h update:
+       - Indilinx Barefoot based SSDs: Add OCZ-VERTEX 1199 and -TURBO
+
+  [CF] TODO file: Move open entries to tickets #106, #107, #108, #109, #110.
+       Remove outdated entries.
+
+  [CF] drivedb.h USB update:
+       - SunPlus 0x04fc:0x0c05
+
+  [CF] drivedb.h update:
+       - SandForce Driven SSDs: Add Corsair Force, fix typo
+
+  [CF] Print hex values of unknown self-test type or status.
+
+  [CF] drivedb.h updates:
+       - SandForce Driven SSDs: Fix regex for Unigen UG99SGC
+       - Seagate Momentus XT series
+       - Quantum Bigfoot: Add 12.7GB
+
+  [CF] drivedb.h updates:
+       - SandForce Driven SSDs: Add 11 attributes of new FW,
+         add Unigen UG99PGC
+       - WD AV ATA family: Add 250GB, 320GB
+       - WD AV SATA family
+
+  [CF] Windows: Build syslogevt.exe with MinGW.  Now possible because
+       binutils provides windmc.
+
+  [CF] Makefile.am: Remove install message about smartd startup.
+       It might be misleading because it is not correct for all platforms.
+
+  [CF] configure.in: Minor fix of '--enable-drivedb' new defaults
+       detection.
+
+  [CF] Update links, configure and OS info in INSTALL file.
+       Replace tabs by spaces.
+
+  [CF] configure.in: Fix '--enable-sample' and '--with-selinux'.
+       Fix obsolete use of AC_DEFINE().
+
+  [CF] drivedb.h updates:
+       - IBM Deskstar 60GXP, 40GV & 75GXP: Update link (ticket #99)
+       - Seagate Barracuda 7200.12: Add ST31000523AS and others
+       - WD Caviar Black: Add 2TB
+       - WD VelociRaptor: Add 6 Gb/s models
+
+  [CF] Windows installer: Fix smartctl-run.bat for drive menu (ticket #31).
+
+  [CF] Windows: Create md5/sha1/sha256 checksums of the binaries.
+       Add checksums.txt file to binary distribution.
+
+  [CF] Windows: Include drivedb.h into binary distribution.
+
+  [CF] drivedb.h updates:
+       - Intel X18-M/X25-M/X25-V G2: Add X25-V 40GB
+       - Transcend CompactFlash Cards
+
+  [CF] drivedb.h updates:
+       - Seagate Momentus 7200 FDE.2: Add ST9160414ASG
+       - Seagate Pipeline HD 5900.1 and 5900.2
+       Based on patch provided by Marcin Falkiewicz.
+
+  [CF] Remove unused variable 'reportbug'.
+
+  [CF] Make function PrintOut() local to smartd.cpp, remove it from
+       smartctl.cpp.
+
+  [CF] Windows: Improve compatibility with MinGW variants.
+       Add configure check for DDK include files.
+       Drop support for '-mno-cygwin' from old Cygwin gcc.
+
+  [AS] smartctl.8.in minor update: adding FreeBSD ahci/scsi device hints
+
+  [CF] Fix build if SVN Id keywords are not expanded (ticket #94).
+
+  [CF] Windows: Remove "." from DLL search path to prevent DLL
+       preloading attacks.
+
+  [CF] drivedb.h USB update:
+       - JMicron 0x152d:0x0551 (ticket #95)
+       Add note about port multipliers to smartctl man page.
+
+  [CF] drivedb.h updates:
+       - SandForce Driven SSDs: Add Unigen drives
+       - Indilinx Barefoot based SSDs: Add ASAX Leopard Hunt II
+
+  [CF] drivedb.h update:
+       - Intel X18-M/X25-M G2: Add names of timed workload attributes.
+       Document attribute clear command '-t vendor,0x40' on smartctl
+       man page.
+
+       Thanks to Artem Danielov from Intel for providing the
+       required information and drives for testing.
+
+  [CF] drivedb.h update:
+       - SandForce Driven SSDs: Add OCZ drives with form factor info.
+
+  [CF] drivedb.h update:
+       - Intel X25-E, X18-M/X25-M (add X18-M, update attributes)
+
+  [CF] configure.in: '--enable-drivedb' is now the default.
+
+  [CF] drivedb.h update:
+       - Indilinx Barefoot based SSDs
+         (combine and update 5 SSD entries using this controller)
+
+  [CF] drivedb.h update:
+       - SandForce Driven SSDs (Demo Drive, OCZ-Agility2/Vertex2/Vertex-LE)
+
+       Thanks to Jeremy Werner (jwerner@sandforce.com) from SandForce for
+       providing the required information and a demo drive for testing.
+
+  [CF] drivedb.h update:
+       - Add 1.5TB drive to SAMSUNG SpinPoint F3 EG series
+
+  [CF] Add print formats '-v ID,msec24hour32' and '-v ID,raw24/raw32'.
+       Used by SSDs with SandForce controller.
+
+  [CF] Allow SMART threshold entries at positions different from
+       attribute table. This fixes attribute output for recent
+       SSDs with SandForce controller.
+
+  [CF] smartctl: Add option '-t vendor,N' to issue ATA
+       command SMART EXECUTE OFF-LINE IMMEDIATE with
+       a vendor specific subcommand.
+
+  [CF] drivedb.h update:
+       - SAMSUNG SpinPoint V80 series (ticket #85)
+
+  [CF] Linux: Support SATA drives on LSI 3ware 9750 controllers.
+       Patch provided by Victor Payno (ticket #86).
+       Modified to avoid duplicate code.
+
+  [CF] drivedb.h update:
+       - SAMSUNG SpinPoint M7 series
+
+  [CF] drivedb.h USB update:
+       - Buffalo JustStore Portable HD-PVU2
 
   [CF] drivedb.h USB updates:
        - Iomega LDHD-UP (ticket #83)

@@ -8,7 +8,7 @@ minor exceptions
 
 --- a/smartd.8.in
 +++ b/smartd.8.in
-@@ -541,10 +541,11 @@ Section below!
+@@ -543,10 +543,11 @@ Section below!
  .B # This is an example smartd startup config file
  .B # /usr/local/etc/smartd.conf for monitoring three
  .B # ATA disks, three SCSI disks, six ATA disks
@@ -24,8 +24,8 @@ minor exceptions
  .B # device, four SATA disks connected to an Areca
  .B # RAID controller, and one SATA disk.
  .B #
-@@ -606,6 +607,13 @@ Section below!
- .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
+@@ -615,6 +616,13 @@ Section below!
+ .B \ \ /dev/twl0 -d 3ware,1 -a -s L/../../7/02
  .B #
  .nf
 +.B # Monitor 2 disks connected to the first HP SmartArray controller which
@@ -38,19 +38,7 @@ minor exceptions
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -1246,9 +1254,9 @@ is set to the argument of \-M exec, if p
- .IP \fBSMARTD_DEVICE\fP 4
- is set to the device path (examples: /dev/hda, /dev/sdb).
- .IP \fBSMARTD_DEVICETYPE\fP 4
--is set to the device type (possible values: ata, scsi, 3ware,N,
-+is set to the device type (possible values: ata, scsi, 3ware, cciss, N,
- areca,N, hpt,L/M/N).  Here N=0,...,127 denotes the ATA disk behind a
--3ware RAID controller and L/M/N denotes the SATA disk behind a
-+3ware or cciss RAID controller and L/M/N denotes the SATA disk behind a
- HighPoint RocketRAID controller.
- .IP \fBSMARTD_DEVICESTRING\fP 4
- is set to the device description.  For SMARTD_DEVICETYPE of ata or
-@@ -1676,6 +1684,10 @@ configuration file Directives might be:
+@@ -1689,6 +1697,10 @@ configuration file Directives might be:
  If you want more frequent information, use:
  .B -a.
  
@@ -63,7 +51,7 @@ minor exceptions
  If a non-comment entry in the configuration file is the text
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -86,6 +86,12 @@ DEVICESCAN -n standby -m root -M exec /u
+@@ -91,6 +91,12 @@ DEVICESCAN -n standby -m root -M exec /u
  # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
  #/dev/hdc,0 -a -s L/../../2/01
  #/dev/hdc,1 -a -s L/../../2/03
@@ -94,8 +82,8 @@ minor exceptions
  .B # device, four SATA disks connected to an Areca
  .B # RAID controller, and one SATA disk.
  .B #
-@@ -182,6 +183,13 @@ Section below!
- .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
+@@ -189,6 +190,13 @@ Section below!
+ .B \ \ /dev/twl0 -d 3ware,1 -a -s L/../../7/02
  .B #
  .nf
 +.B # Monitor 2 disks connected to the first HP SmartArray controller which
@@ -108,19 +96,7 @@ minor exceptions
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -822,9 +830,9 @@ is set to the argument of \-M exec, if p
- .IP \fBSMARTD_DEVICE\fP 4
- is set to the device path (examples: /dev/hda, /dev/sdb).
- .IP \fBSMARTD_DEVICETYPE\fP 4
--is set to the device type (possible values: ata, scsi, 3ware,N,
-+is set to the device type (possible values: ata, scsi, 3ware,N, cciss,N,
- areca,N, hpt,L/M/N).  Here N=0,...,127 denotes the ATA disk behind a
--3ware RAID controller and L/M/N denotes the SATA disk behind a
-+3ware or cciss RAID controller and L/M/N denotes the SATA disk behind a
- HighPoint RocketRAID controller.
- .IP \fBSMARTD_DEVICESTRING\fP 4
- is set to the device description.  For SMARTD_DEVICETYPE of ata or
-@@ -1252,6 +1260,9 @@ configuration file Directives might be:
+@@ -1263,6 +1271,9 @@ configuration file Directives might be:
  If you want more frequent information, use:
  .B -a.
  

@@ -1,3 +1,36 @@
+smartmontools (5.41+svn3365-1) unstable; urgency=low
+
+  * [a7e8ffe] Imported Upstream version 5.41+svn3365
+  * [471d14a] Refreshed patches, removed install.diff applied upstream
+  * [fae0ec9] Added a missing include for hurd-i386.
+    Thanks to Pino Toscano (Closes: #619208)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sun, 19 Jun 2011 17:28:10 +0200
+
+smartmontools (5.40+svn3296-1) unstable; urgency=low
+
+  * [cfbba5b] Imported Upstream version 5.40+svn3296
+    - Intel X18-M/X25-M/X25-V G2 SSDs: Add firmware bug warning
+      (Closes: #581996)
+    - handles missing attributes and prints attributes of SandForce based SSDs
+      correctly (Closes: #601258)
+    - Added a note about smartctl is unable to print a warning if autosave is
+      disabled (Closes: 570892)
+    - Print help message if no option is specified (Closes: 435579)
+    - Only some of the controller specific parts of the code may still use the
+      old ioctl (LP: #658469)
+    - New drive database entry for F4EG (LP: #684809)
+  * [b5b85ba] Refreshed patches
+  * [2b7f0f1] Update to Standards-Version 3.9.1, no changes needed
+  * [3ed7206] debian/rules: remove make -C examplescripts
+  * [f8250f3] Pass exampledir in configure
+  * [0711e68] Install examples files and update-smart-drivedb (Closes: #607689)
+    (Closes: #593502)
+  * [f36e375] Do not install CHANGELOG COPYING INSTALL and initd files
+  * [a76819a] Re-enabled capability-dropping on armel (Closes: #552044)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sun, 20 Mar 2011 19:09:39 +0100
+
 smartmontools (5.39.1+svn3124-2) unstable; urgency=low
 
   [ Florian Weimer ]

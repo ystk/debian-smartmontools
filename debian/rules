@@ -15,10 +15,6 @@ ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIGURE_ARGS += --with-selinux
 endif
 
-ifeq ($(DEB_BUILD_ARCH_CPU),armel)
-	CONFIGURE_ARGS += --without-libcap-ng 
-endif
-
 CFLAGS += -fsigned-char -Wall
 ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
         CFLAGS += -O0
@@ -59,6 +55,7 @@ configure-stamp: debian/stamp-patched
 				--enable-attributelog \
 				--with-savestates=/var/lib/smartmontools/smartd. \
 				--with-attributelog=/var/lib/smartmontools/attrlog. \
+				--with-exampledir=/usr/share/doc/smartmontools/examples/ \
 				${CONFIGURE_ARGS}
 	touch configure-stamp
 
@@ -85,15 +82,7 @@ install: build
 	dh_testroot
 	dh_prep
 	dh_installdirs
-	$(MAKE) DESTDIR=$(CURDIR)/debian/smartmontools \
-		INSTALL_PROGRAM="${INSTALL_PROGRAM}" install-sbinPROGRAMS
-	$(MAKE) DESTDIR=$(CURDIR)/debian/smartmontools \
-		install-sysconfDATA
-	$(MAKE) DESTDIR=$(CURDIR)/debian/smartmontools \
-		install-man
-	$(MAKE) DESTDIR=$(CURDIR)/debian/smartmontools \
-		examplesdir='$$(docdir)/examples'      \
-		-C examplescripts/ install-examplesSCRIPTS install-examplesDATA
+	$(MAKE) DESTDIR=$(CURDIR)/debian/smartmontools install
 	install -D -m 755 debian/smartmontools-bug \
 		$(CURDIR)/debian/smartmontools/usr/share/bug/smartmontools
 

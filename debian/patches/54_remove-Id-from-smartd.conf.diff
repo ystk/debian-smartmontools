@@ -1,13 +1,10 @@
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -1,9 +1,8 @@
--# Sample configuration file for smartd.  See man smartd.conf.
-+# /etc/smartd.conf
-+# Configuration file for smartd. Use "man smartd.conf" for more information.
+@@ -2,8 +2,6 @@
  
  # Home page is: http://smartmontools.sourceforge.net
  
--# $Id: smartd.conf,v 1.45 2006/11/12 23:39:04 dpgilbert Exp $
+-# $Id: smartd.conf 3128 2010-07-27 13:08:31Z chrfranke $
 -
  # smartd will re-read the configuration file if it receives a HUP
  # signal

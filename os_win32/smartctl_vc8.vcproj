@@ -40,7 +40,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories=".,..\getopt,..\regex"
+				AdditionalIncludeDirectories=".,..\getopt,..\regex,$(IntDir)"
 				PreprocessorDefinitions="_DEBUG;HAVE_CONFIG_H;_ERRCODE_DEFINED;errno_t=int;_USE_32BIT_TIME_T;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -116,7 +116,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories=".,..\getopt,..\regex"
+				AdditionalIncludeDirectories=".,..\getopt,..\regex,$(IntDir)"
 				PreprocessorDefinitions="NDEBUG;HAVE_CONFIG_H;_ERRCODE_DEFINED;errno_t=int;_USE_32BIT_TIME_T;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="0"
@@ -300,6 +300,22 @@
 					/>
 				</FileConfiguration>
 			</File>
+			<File
+				RelativePath=".\update-smart-drivedb.nsi"
+				>
+			</File>
+			<File
+				RelativePath=".\wbemcli_small.h"
+				>
+			</File>
+			<File
+				RelativePath=".\wmiquery.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\wmiquery.h"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="regex"
@@ -481,9 +497,9 @@
 				>
 				<Tool
 					Name="VCCustomBuildTool"
-					Description="Copy $(InputPath) config.h"
-					CommandLine="copy $(InputPath) config.h&#x0D;&#x0A;"
-					Outputs="config.h"
+					Description="Copy $(InputPath) $(IntDir)\config.h"
+					CommandLine="copy $(InputPath) $(IntDir)\config.h&#x0D;&#x0A;"
+					Outputs="$(IntDir)\config.h"
 				/>
 			</FileConfiguration>
 			<FileConfiguration
@@ -491,14 +507,18 @@
 				>
 				<Tool
 					Name="VCCustomBuildTool"
-					Description="Copy $(InputPath) config.h"
-					CommandLine="copy $(InputPath) config.h&#x0D;&#x0A;"
-					Outputs="config.h"
+					Description="Copy $(InputPath) $(IntDir)\config.h"
+					CommandLine="copy $(InputPath) $(IntDir)\config.h&#x0D;&#x0A;"
+					Outputs="$(IntDir)\config.h"
 				/>
 			</FileConfiguration>
 		</File>
 		<File
 			RelativePath="..\configure.in"
+			>
+		</File>
+		<File
+			RelativePath="..\csmisas.h"
 			>
 		</File>
 		<File
@@ -554,10 +574,6 @@
 			>
 		</File>
 		<File
-			RelativePath="..\extern.h"
-			>
-		</File>
-		<File
 			RelativePath="..\INSTALL"
 			>
 		</File>
@@ -576,6 +592,26 @@
 		<File
 			RelativePath="..\Makefile.am"
 			>
+		</File>
+		<File
+			RelativePath="..\megaraid.h"
+			>
+			<FileConfiguration
+				Name="Debug|Win32"
+				ExcludedFromBuild="true"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Release|Win32"
+				ExcludedFromBuild="true"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+				/>
+			</FileConfiguration>
 		</File>
 		<File
 			RelativePath="..\NEWS"

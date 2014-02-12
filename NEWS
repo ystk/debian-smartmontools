@@ -1,32 +1,80 @@
 smartmontools NEWS
 ------------------
-$Id: NEWS 3119 2010-06-11 16:21:25Z chrfranke $
+$Id: NEWS 3365 2011-06-09 18:47:31Z chrfranke $
 
 The most up-to-date version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/NEWS?view=markup
 
-Date <Not released yet, please try current SVN>
+Date 2011-06-09
+Summary: smartmontools release 5.41
+-----------------------------------------------------------
+- Failed self-tests outdated by a newer successful extended
+  self-test are no longer reported as errors.
+- Support for ATA Long Logical/Physical Sectors (LLS/LPS).
+- 'smartctl --scan-open' can create a draft smartd.conf.
+- smartctl prints World Wide Name (WWN) of ATA device.
+- smartctl option '-f brief' to select new attribute output
+  format which includes more flags and fits in 80 columns.
+- smartd logs identify information and WWN of each ATA device.
+- smartd logs warning from drive database if present.
+- smartd logs changes of offline data collection status.
+- smartd directive '-l scterc,READTIME,WRITETIME'.
+- smartd preserves last scheduled selective self-tests span.
+- 'smartd.service' file for systemd.
+- configure option '--with-systemdsystemunitdir'
+- configure option '--with-exampledir'.
+- configure searches for init.d or rc.d directory.
+- 'make install' does no longer overwrite an existing
+  smartd.conf file.
+- 'update-smart-drivedb' does no longer require GNU sed.
+- Many HDD, SSD and USB additions to drive database.
+- Linux USB autodetection: Enable '-d sat,16' for newer kernels.
+- Linux megaraid: Fix segfault on non-data SCSI commands.
+- Linux megaraid: Fix pass-through of non-data ATA commands.
+- FreeBSD: Use 'fetch' in 'update-smart-drivedb'.
+- OpenBSD: Use 'ftp' in 'update-smart-drivedb'.
+- OpenBSD: Workaround for shell bug.
+- OpenBSD: Fix DEVICESCAN for OpenBSD >= 4.8.
+- Windows: Experimental support for Intel ICHxR RAID.
+- Windows: DEVICESCAN includes USB devices.
+- Windows: Faster USB ID detection.
+- Windows: update-smart-drivedb tool.
+- Windows installer: Option '/SO component,...'.
+- Windows: Fix smartd warning email truncation on Win7.
+- Windows installer: Fix shortcut removal on Vista/Win7.
+- Windows: Add missing quotes in smartctl-run.bat and
+  smartd-run.bat
+
+Date 2010-10-16
 Summary: smartmontools release 5.40
 -----------------------------------------------------------
 - Other config entries may precede smartd DEVICESCAN.
 - Option '-v' allows to specify byte order of attribute raw value
 - configure: New default value for '--with-docdir'.
+- configure: '--enable-drivedb' is now the default.
+- Improved support for Intel SSDs.
+- Improved support for SandForce based SSDs.
 - Drive database is in a separate source file 'drivedb.h'
   which can be downloaded from SVN.
 - USB ID info is now included in 'drivedb.h'.
+- Many additions to drive database.
 - New script 'update-smart-drivedb'.
 - smartd libcap-ng support, option '-C, --capabilities'.
 - smartd directive '-l xerror' to check Extended Comprehensive
   SMART Error Log.
 - smartctl option '-l scterc[,...]' to get/set the
   SCT Error Recovery Control time limit.
+- smartctl option '-t vendor,N'.
 - smartctl options '--scan, --scan-open'.
 - Linux: Add '/dev/sd[a-c][a-z]' to smartd DEVICESCAN.
+- Linux: Support SATA drives on LSI 3ware 9750 controllers.
 - Windows: Read 'drivedb.h' and 'smartd.conf' from exe directory.
 - Windows: Support for 64-bit executables.
 - Windows: Support for cross compilation on Linux.
 - Fix regression in smartctl option '-t select,M-N'.
 - Fix SCT temperature table commands on big endian CPUs.
+- Fix regression in smartd SMARTD_DEVICE and SMARTD_DEVICETYPE
+  environment variables.
 
 Date 2010-01-28
 Summary: smartmontools release 5.39.1

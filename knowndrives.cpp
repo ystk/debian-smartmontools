@@ -4,8 +4,8 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  * Address of support mailing list: smartmontools-support@lists.sourceforge.net
  *
- * Copyright (C) 2003-10 Philip Williams, Bruce Allen
- * Copyright (C) 2008-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2003-11 Philip Williams, Bruce Allen
+ * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,6 @@
 #include "int64.h"
 #include <stdio.h>
 #include "atacmds.h"
-#include "extern.h"
 #include "knowndrives.h"
 #include "utility.h"
 
@@ -35,7 +34,7 @@
 
 #include <stdexcept>
 
-const char * knowndrives_cpp_cvsid = "$Id: knowndrives.cpp 3093 2010-04-30 09:57:36Z chrfranke $"
+const char * knowndrives_cpp_cvsid = "$Id: knowndrives.cpp 3343 2011-05-25 20:18:17Z chrfranke $"
                                      KNOWNDRIVES_H_CVSID;
 
 #define MODEL_STRING_LENGTH                         40
@@ -177,7 +176,7 @@ static bool match(const char * pattern, const char * str)
 // string.  If either the drive's model or firmware strings are not set by the
 // manufacturer then values of NULL may be used.  Returns the entry of the
 // first match in knowndrives[] or 0 if no match if found.
-const drive_settings * lookup_drive(const char * model, const char * firmware)
+static const drive_settings * lookup_drive(const char * model, const char * firmware)
 {
   if (!model)
     model = "";
@@ -215,8 +214,8 @@ static bool parse_db_presets(const char * presets, ata_vendor_attr_defs * defs,
     i += strspn(presets+i, " \t");
     if (!presets[i])
       break;
-    char opt, arg[40+1+13]; int len = -1;
-    if (!(sscanf(presets+i, "-%c %40[^ ]%n", &opt, arg, &len) >= 2 && len > 0))
+    char opt, arg[80+1+13]; int len = -1;
+    if (!(sscanf(presets+i, "-%c %80[^ ]%n", &opt, arg, &len) >= 2 && len > 0))
       return false;
     if (opt == 'v' && defs) {
       // Parse "-v N,format[,name]"
@@ -289,7 +288,6 @@ int lookup_usb_device(int vendor_id, int product_id, int bcd_device,
     bcd_dev_str[0] = 0;
 
   int found = 0;
-  bool bcd_match = false;
   for (unsigned i = 0; i < knowndrives.size(); i++) {
     const drive_settings & dbentry = knowndrives[i];
 
@@ -309,18 +307,25 @@ int lookup_usb_device(int vendor_id, int product_id, int bcd_device,
 
     // If two entries with same vendor:product ID have different
     // types, use bcd_device (if provided by OS) to select entry.
-    bool bm = (   *bcd_dev_str && *dbentry.firmwareregexp
-               && match(dbentry.firmwareregexp, bcd_dev_str));
-
-    if (found == 0 || bm > bcd_match) {
+    if (  *dbentry.firmwareregexp && *bcd_dev_str
+        && match(dbentry.firmwareregexp, bcd_dev_str)) {
+      // Exact match including bcd_device
       info = d; found = 1;
-      bcd_match = bm;
+      break;
     }
-    else if (info.usb_type != d.usb_type && bm == bcd_match) {
-      // two different entries found
+    else if (!found) {
+      // First match without bcd_device
+      info = d; found = 1;
+    }
+    else if (info.usb_type != d.usb_type) {
+      // Another possible match with different type
       info2 = d; found = 2;
       break;
     }
+
+    // Stop search at first matching entry with empty bcd_device
+    if (!*dbentry.firmwareregexp)
+      break;
   }
 
   return found;
@@ -482,14 +487,14 @@ int showmatchingpresets(const char *model, const char *firmware)
 }
 
 // Shows the presets (if any) that are available for the given drive.
-void show_presets(const ata_identify_device * drive, bool fix_swapped_id)
+void show_presets(const ata_identify_device * drive)
 {
   char model[MODEL_STRING_LENGTH+1], firmware[FIRMWARE_STRING_LENGTH+1];
 
   // get the drive's model/firmware strings
-  format_ata_string(model, drive->model, MODEL_STRING_LENGTH, fix_swapped_id);
-  format_ata_string(firmware, drive->fw_rev, FIRMWARE_STRING_LENGTH, fix_swapped_id);
-  
+  ata_format_id_string(model, drive->model, sizeof(model)-1);
+  ata_format_id_string(firmware, drive->fw_rev, sizeof(firmware)-1);
+
   // and search to see if they match values in the table
   const drive_settings * dbentry = lookup_drive(model, firmware);
   if (!dbentry) {
@@ -512,29 +517,30 @@ void show_presets(const ata_identify_device * drive, bool fix_swapped_id)
   showonepreset(dbentry);
 }
 
-// Sets preset vendor attribute options in opts by finding the entry
-// (if any) for the given drive in knowndrives[].  Values that have
-// already been set in opts will not be changed.  Returns false if drive
-// not recognized.
-bool apply_presets(const ata_identify_device *drive, ata_vendor_attr_defs & defs,
-                   unsigned char & fix_firmwarebug, bool fix_swapped_id)
+// Searches drive database and sets preset vendor attribute
+// options in defs and fix_firmwarebug.
+// Values that have already been set will not be changed.
+// Returns pointer to database entry or nullptr if none found
+const drive_settings * lookup_drive_apply_presets(
+  const ata_identify_device * drive, ata_vendor_attr_defs & defs,
+  unsigned char & fix_firmwarebug)
 {
   // get the drive's model/firmware strings
   char model[MODEL_STRING_LENGTH+1], firmware[FIRMWARE_STRING_LENGTH+1];
-  format_ata_string(model, drive->model, MODEL_STRING_LENGTH, fix_swapped_id);
-  format_ata_string(firmware, drive->fw_rev, FIRMWARE_STRING_LENGTH, fix_swapped_id);
-  
+  ata_format_id_string(model, drive->model, sizeof(model)-1);
+  ata_format_id_string(firmware, drive->fw_rev, sizeof(firmware)-1);
+
   // Look up the drive in knowndrives[].
   const drive_settings * dbentry = lookup_drive(model, firmware);
   if (!dbentry)
-    return false;
+    return 0;
 
   if (*dbentry->presets) {
     // Apply presets
     if (!parse_presets(dbentry->presets, defs, fix_firmwarebug))
       pout("Syntax error in preset option string \"%s\"\n", dbentry->presets);
   }
-  return true;
+  return dbentry;
 }
 
 
