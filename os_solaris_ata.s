@@ -16,8 +16,8 @@
 !   General Public License for more details.
 ! 
 !   You should have received a copy of the GNU General Public License
-!   along with this program; if not, write to the Free Software
-!   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+!   along with this program; if not, write to the Free Software Foundation,
+!   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 ! 
 ! 
 !        --------------------------------------------------------
@@ -97,7 +97,7 @@
 	.section	".rodata"
 	.align 8
 .LLC0:
-	.asciz	"$Id: os_solaris_ata.s,v 1.6 2008/03/04 22:09:47 ballen4705 Exp $"
+	.asciz	"$Id: os_solaris_ata.s 3728 2012-12-13 17:57:50Z chrfranke $"
 	.global os_solaris_ata_s_cvsid
 	.section	".data"
 	.align 4

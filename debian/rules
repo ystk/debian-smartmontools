@@ -5,14 +5,17 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
-# for quilt
-include /usr/share/quilt/quilt.make
+export DEB_BUILD_HARDENING=1
 
 DEB_BUILD_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_BUILD_ARCH_OS)
 DEB_BUILD_ARCH_CPU ?= $(shell dpkg-architecture -qDEB_BUILD_ARCH_CPU)
 
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIGURE_ARGS += --with-selinux
+endif
+
+ifeq ($(DEB_HOST_ARCH_OS),kfreebsd)
+	CFLAGS += -I/usr/include/freebsd
 endif
 
 CFLAGS += -fsigned-char -Wall
@@ -42,13 +45,13 @@ get-orig-source:
 		echo "  "$(TARBALL)" created; move it to the right destination to build the package"
 
 configure: configure-stamp
-configure-stamp: debian/stamp-patched
+configure-stamp: 
 	dh_testdir
 	./autogen.sh
-	CFLAGS="${CFLAGS}" ./configure --prefix=/usr		 \
+	CFLAGS="${CFLAGS}" CXXFLAGS="${CFLAGS}" ./configure --prefix=/usr		 \
 				--sysconfdir=/etc		 \
 				--mandir=/usr/share/man		 \
-				--with-initscriptdir=/etc/init.d \
+				--with-initscriptdir=no \
 				--with-docdir=/usr/share/doc/smartmontools \
 				--enable-drivedb \
 				--enable-savestates \
@@ -56,18 +59,20 @@ configure-stamp: debian/stamp-patched
 				--with-savestates=/var/lib/smartmontools/smartd. \
 				--with-attributelog=/var/lib/smartmontools/attrlog. \
 				--with-exampledir=/usr/share/doc/smartmontools/examples/ \
+				--with-drivedbdir=/var/lib/smartmontools/drivedb \
 				${CONFIGURE_ARGS}
 	touch configure-stamp
 
-
-build: build-stamp
+build: build-arch build-indep
+build-arch: build-stamp
+build-indep: build-stamp
 build-stamp: configure-stamp
 	dh_testdir
 	# Add here commands to compile the package.
 	$(MAKE)
 	touch build-stamp
 
-clean: unpatch
+clean: 
 	dh_testdir
 	dh_testroot
 	# rm -f debian/logcheck.logcheck.ignore.*
@@ -101,10 +106,10 @@ binary-arch: build install
 	dh_install
 	dh_installinit -- start 20 2 3 4 5 . stop 20 1 .
 	dh_installcron
-	dh_installman
+	dh_installman debian/update-smart-drivedb.8
 	dh_installinfo
 	dh_lintian
-	dh_installchangelogs CHANGELOG
+	dh_installchangelogs ChangeLog
 	dh_link
 	dh_strip
 	dh_compress

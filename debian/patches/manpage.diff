@@ -1,18 +1,9 @@
 Fixed example path in man pages
---- a/smartd.8.in
-+++ b/smartd.8.in
-@@ -1784,7 +1784,7 @@ sleep 30
- .fi
- 
- Some example scripts are distributed with the smartmontools package,
--in /usr/local/share/doc/smartmontools/examplescripts/.
-+in /usr/local/share/doc/smartmontools/examples/.
- 
- Please note that these scripts typically run as root, so any files
- that they read/write should not be writable by ordinary users or
---- a/smartd.conf.5.in
-+++ b/smartd.conf.5.in
-@@ -1357,7 +1357,7 @@ sleep 30
+Index: smartmontools/smartd.conf.5.in
+===================================================================
+--- smartmontools.orig/smartd.conf.5.in	2013-09-05 13:32:24.783972489 +0200
++++ smartmontools/smartd.conf.5.in	2013-09-05 13:32:24.775972489 +0200
+@@ -1601,7 +1601,7 @@
  .fi
  
  Some example scripts are distributed with the smartmontools package,

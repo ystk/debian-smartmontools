@@ -1,3 +1,87 @@
+smartmontools (6.2+svn3841-1.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * debian/control: Switch to automake1.11. (Closes: #724436)
+
+ -- Eric Dorland <eric@debian.org>  Sun, 16 Feb 2014 16:27:11 -0500
+
+smartmontools (6.2+svn3841-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Fix FTBFS on GNU/kFreeBSD. (Closes: #736660)
+
+ -- Robert Millan <rmh@debian.org>  Thu, 06 Feb 2014 13:48:48 +0100
+
+smartmontools (6.2+svn3841-1) unstable; urgency=low
+
+  * [3d17a85] Imported Upstream version 6.2+svn3841
+  * [8251afb] Fix  FTBFS[kfreebsd]
+    Thanks to Christoph Egger (Closes: #717567)
+  * [e57fafb] Refreshed patches
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Thu, 05 Sep 2013 14:53:36 +0200
+
+smartmontools (6.1+svn3812-1) unstable; urgency=low
+
+  * [ee38a43] Imported Upstream version 6.1+svn3812 (Closes: #691646)
+    - Support for WD MyBook Essential 0x1058:0x0910 (Closes: #633724)
+    - Added  USB bridge to known IDs (Closes: #643928)
+    - Added support for Seagate Expansion Desk external (usb) disks
+      (Closes: #621411)
+  * [1855d63] Refreshed patches and removed patches applied upstream
+  * [d3fc9d1] Remove quilt from depends
+  * [841c1a8] CHANGELOG file has been renamed, install Changelog
+  * [3502e16] Updated VCS control fields
+  * [8f14e44] debian/rules: Provide build-arch and build-indep
+  * [0f1c16c] Harden smartmontools binaries
+  * [555346e] Bump to 3.9.4 standards version
+  * [5ae3fa9] Use /var/lib/smartmontools/drivedb for drivedb.h updates
+    (Closes: #706909)
+  * [c16ffdc] Create  /var/lib/smartmontools/drivedb dir
+  * [79a3dc2] Trigger the removal of /etc/init.d/smartd when upgrading
+    (Closes: #684617, #704081)
+  * [a0a5725] Also remove /etc/init.d/smartd in preinst script
+  * [a26a490] Added man page for update-smart-drivedb.
+    Thanks to Hannes von Haugwitz (Closes: #708433)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sun, 02 Jun 2013 11:14:02 +0200
+
+smartmontools (5.42+svn3561-3) unstable; urgency=high
+
+  * [f10872d] Really fix FTBFS on kfreebsd.
+    Thanks to Petr Salinger (Closes: #677393)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Mon, 16 Jul 2012 15:21:56 +0200
+
+smartmontools (5.42+svn3561-2) unstable; urgency=high
+
+  * [743e0f4] Fixed FTBFS in kfreebsd.
+    Thanks to Petr Salinger (Closes: #677393)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Mon, 16 Jul 2012 12:06:15 +0200
+
+smartmontools (5.42+svn3561-1) unstable; urgency=low
+
+  * [f4e463d] Imported Upstream version 5.42+svn3561
+  * [23f7a2f] Refreshed patches
+  * [16216c8] Fixed FTBFS on kfreebsd.
+    Thanks to Petr Salinger (Closes: #676142)
+  * [6652700] Fixed regression introduced in 10mail script (Closes: #649515)
+  * [fd647e5] Remove /etc/init.d/smartd (Closes: #677095)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Wed, 20 Jun 2012 16:36:24 +0200
+
+smartmontools (5.42+svn3539-1) unstable; urgency=low
+
+  * [e165493] Imported Upstream version 5.42+svn3539
+    (Closes: #668391, #608953)
+  * [9fcd449] Refreshed patches
+  * [65c801f] Do not install upstream init (Closes: #631075)
+  * [9a19418] Fixed check for /usr/bin/mail.
+    Thanks to Martin von Gagern (Closes: #649515)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sat, 12 May 2012 13:02:49 +0200
+
 smartmontools (5.41+svn3365-1) unstable; urgency=low
 
   * [a7e8ffe] Imported Upstream version 5.41+svn3365

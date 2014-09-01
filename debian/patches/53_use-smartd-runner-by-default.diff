@@ -1,5 +1,7 @@
---- a/smartd.conf
-+++ b/smartd.conf
+Index: smartmontools/smartd.conf
+===================================================================
+--- smartmontools.orig/smartd.conf	2013-09-05 13:32:11.471972451 +0200
++++ smartmontools/smartd.conf	2013-09-05 13:32:11.467972451 +0200
 @@ -20,7 +20,7 @@
  # Directives listed below, which will be applied to all devices that
  # are found.  Most users should comment out DEVICESCAN and explicitly

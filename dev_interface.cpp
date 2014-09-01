@@ -3,7 +3,7 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,13 +19,20 @@
 #include "int64.h"
 #include "dev_interface.h"
 #include "dev_tunnelled.h"
+#include "atacmds.h" // ATA_SMART_CMD/STATUS
 #include "utility.h"
 
 #include <errno.h>
 #include <stdarg.h>
 #include <stdexcept>
 
-const char * dev_interface_cpp_cvsid = "$Id: dev_interface.cpp 3256 2011-02-08 22:13:41Z chrfranke $"
+#if defined(HAVE_GETTIMEOFDAY)
+#include <sys/time.h>
+#elif defined(HAVE_FTIME)
+#include <sys/timeb.h>
+#endif
+
+const char * dev_interface_cpp_cvsid = "$Id: dev_interface.cpp 3741 2013-01-02 17:06:54Z chrfranke $"
   DEV_INTERFACE_H_CVSID;
 
 /////////////////////////////////////////////////////////////////////////////
@@ -48,6 +55,17 @@ smart_device::~smart_device() throw()
 {
 }
 
+bool smart_device::is_syscall_unsup() const
+{
+  if (get_errno() == ENOSYS)
+    return true;
+#ifdef ENOTSUP
+  if (get_errno() == ENOTSUP)
+    return true;
+#endif
+  return false;
+}
+
 bool smart_device::set_err(int no, const char * msg, ...)
 {
   if (!msg)
@@ -61,8 +79,7 @@ bool smart_device::set_err(int no, const char * msg, ...)
 
 bool smart_device::set_err(int no)
 {
-  smi()->set_err_var(&m_err, no);
-  return false;
+  return smi()->set_err_var(&m_err, no);
 }
 
 smart_device * smart_device::autodetect_open()
@@ -122,10 +139,8 @@ bool ata_device::ata_pass_through(const ata_cmd_in & in)
   return ata_pass_through(in, dummy);
 }
 
-bool ata_device::ata_cmd_is_ok(const ata_cmd_in & in,
-  bool data_out_support /*= false*/,
-  bool multi_sector_support /*= false*/,
-  bool ata_48bit_support /*= false*/)
+bool ata_device::ata_cmd_is_supported(const ata_cmd_in & in,
+  unsigned flags, const char * type /* = 0 */)
 {
   // Check DATA IN/OUT
   switch (in.direction) {
@@ -151,12 +166,25 @@ bool ata_device::ata_cmd_is_ok(const ata_cmd_in & in,
   }
 
   // Check features
-  if (in.direction == ata_cmd_in::data_out && !data_out_support)
-    return set_err(ENOSYS, "DATA OUT ATA commands not supported");
-  if (!(in.size == 0 || in.size == 512) && !multi_sector_support)
-    return set_err(ENOSYS, "Multi-sector ATA commands not supported");
-  if (in.in_regs.is_48bit_cmd() && !ata_48bit_support)
-    return set_err(ENOSYS, "48-bit ATA commands not supported");
+  const char * errmsg = 0;
+  if (in.direction == ata_cmd_in::data_out && !(flags & supports_data_out))
+    errmsg = "DATA OUT ATA commands not implemented";
+  else if (   in.out_needed.is_set() && !(flags & supports_output_regs)
+           && !(   in.in_regs.command == ATA_SMART_CMD
+                && in.in_regs.features == ATA_SMART_STATUS
+                && (flags & supports_smart_status)))
+    errmsg = "Read of ATA output registers not implemented";
+  else if (!(in.size == 0 || in.size == 512) && !(flags & supports_multi_sector))
+    errmsg = "Multi-sector ATA commands not implemented";
+  else if (in.in_regs.is_48bit_cmd() && !(flags & (supports_48bit_hi_null|supports_48bit)))
+    errmsg = "48-bit ATA commands not implemented";
+  else if (in.in_regs.is_real_48bit_cmd() && !(flags & supports_48bit))
+    errmsg = "48-bit ATA commands not fully implemented";
+
+  if (errmsg)
+    return set_err(ENOSYS, "%s%s%s%s", errmsg,
+                   (type ? " [" : ""), (type ? type : ""), (type ? "]" : ""));
+
   return true;
 }
 
@@ -230,7 +258,7 @@ std::string smart_interface::get_valid_dev_types_str()
 {
   // default
   std::string s =
-    "ata, scsi, sat[,N][+TYPE], usbcypress[,X], usbjmicron[,x][,N], usbsunplus";
+    "ata, scsi, sat[,auto][,N][+TYPE], usbcypress[,X], usbjmicron[,p][,x][,N], usbsunplus";
   // append custom
   std::string s2 = get_valid_custom_dev_types_str();
   if (!s2.empty()) {
@@ -244,28 +272,64 @@ std::string smart_interface::get_app_examples(const char * /*appname*/)
   return "";
 }
 
-void smart_interface::set_err(int no, const char * msg, ...)
+int64_t smart_interface::get_timer_usec()
 {
-  if (!msg) {
-    set_err(no); return;
+#if defined(HAVE_GETTIMEOFDAY)
+ #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+  {
+    static bool have_clock_monotonic = true;
+    if (have_clock_monotonic) {
+      struct timespec ts;
+      if (!clock_gettime(CLOCK_MONOTONIC, &ts))
+        return ts.tv_sec * 1000000LL + ts.tv_nsec/1000;
+      have_clock_monotonic = false;
+    }
   }
+ #endif
+  {
+    struct timeval tv;
+    gettimeofday(&tv, 0);
+    return tv.tv_sec * 1000000LL + tv.tv_usec;
+  }
+#elif defined(HAVE_FTIME)
+  {
+    struct timeb tb;
+    ftime(&tb);
+    return tb.time * 1000000LL + tb.millitm * 1000;
+  }
+#else
+  return -1;
+#endif
+}
+
+bool smart_interface::disable_system_auto_standby(bool /*disable*/)
+{
+  return set_err(ENOSYS);
+}
+
+bool smart_interface::set_err(int no, const char * msg, ...)
+{
+  if (!msg)
+    return set_err(no);
   m_err.no = no;
   va_list ap; va_start(ap, msg);
   m_err.msg = vstrprintf(msg, ap);
   va_end(ap);
+  return false;
 }
 
-void smart_interface::set_err(int no)
+bool smart_interface::set_err(int no)
 {
-  set_err_var(&m_err, no);
+  return set_err_var(&m_err, no);
 }
 
-void smart_interface::set_err_var(smart_device::error_info * err, int no)
+bool smart_interface::set_err_var(smart_device::error_info * err, int no)
 {
   err->no = no;
   err->msg = get_msg_for_errno(no);
   if (err->msg.empty() && no != 0)
     err->msg = strprintf("Unknown error %d", no);
+  return false;
 }
 
 const char * smart_interface::get_msg_for_errno(int no)

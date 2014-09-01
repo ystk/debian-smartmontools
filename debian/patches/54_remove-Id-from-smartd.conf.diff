@@ -1,10 +1,12 @@
---- a/smartd.conf
-+++ b/smartd.conf
+Index: smartmontools/smartd.conf
+===================================================================
+--- smartmontools.orig/smartd.conf	2013-09-05 13:32:14.371972459 +0200
++++ smartmontools/smartd.conf	2013-09-05 13:32:14.363972459 +0200
 @@ -2,8 +2,6 @@
  
  # Home page is: http://smartmontools.sourceforge.net
  
--# $Id: smartd.conf 3128 2010-07-27 13:08:31Z chrfranke $
+-# $Id: smartd.conf 3651 2012-10-18 15:11:36Z samm2 $
 -
  # smartd will re-read the configuration file if it receives a HUP
  # signal

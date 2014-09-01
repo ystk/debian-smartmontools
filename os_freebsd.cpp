@@ -11,8 +11,8 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
+ *
  */
 
 #include <stdio.h>
@@ -46,6 +46,7 @@
 
 #include "dev_interface.h"
 #include "dev_ata_cmd_set.h"
+#include "dev_areca.h"
 
 #define USBDEV "/dev/usb"
 #if defined(__FreeBSD_version)
@@ -74,7 +75,7 @@
 #define PATHINQ_SETTINGS_SIZE   128
 #endif
 
-const char *os_XXXX_c_cvsid="$Id: os_freebsd.cpp 3335 2011-05-21 17:32:16Z samm2 $" \
+const char *os_XXXX_c_cvsid="$Id: os_freebsd.cpp 3824 2013-07-05 10:40:38Z samm2 $" \
 ATACMDS_H_CVSID CCISS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_FREEBSD_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 #define NO_RETURN 0
@@ -117,8 +118,11 @@ void printwarning(int msgNo, const char* extra) {
 #define ATA_DEVICE "/dev/ata"
 #endif
 
+#define ARGUSED(x) ((void)(x))
+
 // global variable holding byte count of allocated memory
 long long bytes;
+extern unsigned char failuretest_permissive;
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -187,11 +191,15 @@ static const char  smartctl_examples[] =
          "                                      (Prints Self-Test & Attribute errors)\n\n"
          "  smartctl -a --device=3ware,2 /dev/twa0\n"
          "  smartctl -a --device=3ware,2 /dev/twe0\n"
+         "  smartctl -a --device=3ware,2 /dev/tws0\n"
          "                              (Prints all SMART information for ATA disk on\n"
          "                                 third port of first 3ware RAID controller)\n"
   "  smartctl -a --device=cciss,0 /dev/ciss0\n"
          "                              (Prints all SMART information for first disk \n"
          "                               on Common Interface for SCSI-3 Support driver)\n"
+  "  smartctl -a --device=areca,3/1 /dev/arcmsr0\n"
+         "                              (Prints all SMART information for 3rd disk in the 1st enclosure \n"
+         "                               on first ARECA RAID controller)\n"
 
          ;
 
@@ -236,7 +244,7 @@ public:
   virtual bool ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out);
 
 protected:
-  virtual int do_cmd(struct ata_ioc_request* request);
+  virtual int do_cmd(struct ata_ioc_request* request, bool is_48bit_cmd);
 };
 
 freebsd_ata_device::freebsd_ata_device(smart_interface * intf, const char * dev_name, const char * req_type)
@@ -245,22 +253,31 @@ freebsd_ata_device::freebsd_ata_device(smart_interface * intf, const char * dev_
 {
 }
 
-int freebsd_ata_device::do_cmd( struct ata_ioc_request* request)
+int freebsd_ata_device::do_cmd( struct ata_ioc_request* request, bool is_48bit_cmd)
 {
-  int fd = get_fd();
-  return ioctl(fd, IOCATAREQUEST, request);
+  int fd = get_fd(), ret;
+  ARGUSED(is_48bit_cmd); // no support for 48 bit commands in the IOCATAREQUEST
+  ret = ioctl(fd, IOCATAREQUEST, request);
+  if (ret) set_err(errno);
+  return ret;
 }
 
 
 
 bool freebsd_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
 {
+  bool ata_48bit = false; // no ata_48bit_support via IOCATAREQUEST
+  if(!strcmp("atacam",get_dev_type())) // enable for atacam interface
+    ata_48bit = true;
+
   if (!ata_cmd_is_ok(in,
     true,  // data_out_support
     true,  // multi_sector_support
-    false) // no ata_48bit_support via IOCATAREQUEST
-    ) 
-    return false;
+    ata_48bit) 
+    ) {
+      set_err(ENOSYS, "48-bit ATA commands not implemented for legacy controllers");
+      return false;
+    }
 
   struct ata_ioc_request request;
   bzero(&request,sizeof(struct ata_ioc_request));
@@ -277,23 +294,23 @@ bool freebsd_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & o
       request.flags=ATA_CMD_CONTROL;
       break;
     case ata_cmd_in::data_in:  
-      request.flags=ATA_CMD_READ;
+      request.flags=ATA_CMD_READ | ATA_CMD_CONTROL;
       request.data=(char *)in.buffer;
       request.count=in.size;
       break;
     case ata_cmd_in::data_out: 
-      request.flags=ATA_CMD_WRITE;
+      request.flags=ATA_CMD_WRITE | ATA_CMD_CONTROL;
       request.data=(char *)in.buffer;
       request.count=in.size;
       break;
     default:
       return set_err(ENOSYS);
   }
-                          
-  clear_err(); 
+
+  clear_err();
   errno = 0;
-  if (do_cmd(&request))
-      return set_err(errno);
+  if (do_cmd(&request, in.in_regs.is_48bit_cmd()))
+      return false;
   if (request.error)
       return set_err(EIO, "request failed, error code 0x%02x", request.error);
 
@@ -310,10 +327,6 @@ bool freebsd_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & o
     unsigned const char normal_lo=0x4f, normal_hi=0xc2;
     unsigned const char failed_lo=0xf4, failed_hi=0x2c;
 
-#if (FREEBSDVER < 502000)
-    printwarning(NO_RETURN,NULL);
-#endif
-
     // Cyl low and Cyl high unchanged means "Good SMART status"
     if (!(out.out_regs.lba_mid==normal_lo && out.out_regs.lba_high==normal_hi)
     // These values mean "Bad SMART status"
@@ -322,7 +335,8 @@ bool freebsd_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & o
     {
       // We haven't gotten output that makes sense; print out some debugging info
       char buf[512];
-      sprintf(buf,"CMD=0x%02x\nFR =0x%02x\nNS =0x%02x\nSC =0x%02x\nCL =0x%02x\nCH =0x%02x\nRETURN =0x%04x\n",
+      snprintf(buf, sizeof(buf),
+        "CMD=0x%02x\nFR =0x%02x\nNS =0x%02x\nSC =0x%02x\nCL =0x%02x\nCH =0x%02x\nRETURN =0x%04x\n",
         (int)request.u.ata.command,
         (int)request.u.ata.feature,
         (int)request.u.ata.count,
@@ -354,7 +368,7 @@ protected:
   int m_fd;
   struct cam_device *m_camdev;
 
-  virtual int do_cmd( struct ata_ioc_request* request);
+  virtual int do_cmd( struct ata_ioc_request* request , bool is_48bit_cmd);
 };
 
 bool freebsd_atacam_device::open(){
@@ -374,16 +388,26 @@ bool freebsd_atacam_device::close(){
   return true;
 }
 
-int freebsd_atacam_device::do_cmd( struct ata_ioc_request* request)
+int freebsd_atacam_device::do_cmd( struct ata_ioc_request* request, bool is_48bit_cmd)
 {
   union ccb ccb;
   int camflags;
+
+  // FIXME:
+  // 48bit commands are broken in ATACAM before r242422/HEAD
+  // and may cause system hang
+  // Waiting for MFC to make sure that bug is fixed,
+  // later version check needs to be added
+  if(!strcmp("ata",m_camdev->sim_name) && is_48bit_cmd) {
+    set_err(ENOSYS, "48-bit ATA commands not implemented for legacy controllers");
+    return -1;
+  }
 
   memset(&ccb, 0, sizeof(ccb));
 
   if (request->count == 0)
     camflags = CAM_DIR_NONE;
-  else if (request->flags == ATA_CMD_READ)
+  else if (request->flags & ATA_CMD_READ)
     camflags = CAM_DIR_IN;
   else
     camflags = CAM_DIR_OUT;
@@ -397,42 +421,56 @@ int freebsd_atacam_device::do_cmd( struct ata_ioc_request* request)
                  request->count,
                  request->timeout * 1000); // timeout in seconds
 
+  ccb.ataio.cmd.flags = CAM_ATAIO_NEEDRESULT |
+    (is_48bit_cmd ? CAM_ATAIO_48BIT : 0);
   // ata_28bit_cmd
-  if (request->flags == ATA_CMD_CONTROL)
-    ccb.ataio.cmd.flags = CAM_ATAIO_NEEDRESULT;
-  else
-    ccb.ataio.cmd.flags = 0;
   ccb.ataio.cmd.command = request->u.ata.command;
   ccb.ataio.cmd.features = request->u.ata.feature;
   ccb.ataio.cmd.lba_low = request->u.ata.lba;
   ccb.ataio.cmd.lba_mid = request->u.ata.lba >> 8;
   ccb.ataio.cmd.lba_high = request->u.ata.lba >> 16;
+  // ata_48bit cmd
+  ccb.ataio.cmd.lba_low_exp = request->u.ata.lba >> 24;
+  ccb.ataio.cmd.lba_mid_exp = request->u.ata.lba >> 32;
+  ccb.ataio.cmd.lba_high_exp = request->u.ata.lba >> 40;
   ccb.ataio.cmd.device = 0x40 | ((request->u.ata.lba >> 24) & 0x0f);
   ccb.ataio.cmd.sector_count = request->u.ata.count;
+  ccb.ataio.cmd.sector_count_exp = request->u.ata.count  >> 8;;
 
   ccb.ccb_h.flags |= CAM_DEV_QFRZDIS;
 
   if (cam_send_ccb(m_camdev, &ccb) < 0) {
-    err(1, "cam_send_ccb");
+    set_err(EIO, "cam_send_ccb failed");
     return -1;
   }
 
   if ((ccb.ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
     cam_error_print(m_camdev, &ccb, CAM_ESF_ALL, CAM_EPF_ALL, stderr);
+    set_err(EIO);
     return -1;
   }
 
-  request->u.ata.count = ccb.ataio.res.sector_count;
+  request->u.ata.lba =
+    ((u_int64_t)(ccb.ataio.res.lba_low)) |
+    ((u_int64_t)(ccb.ataio.res.lba_mid) << 8) |
+    ((u_int64_t)(ccb.ataio.res.lba_high) << 16) |
+    ((u_int64_t)(ccb.ataio.res.lba_low_exp) << 24) |
+    ((u_int64_t)(ccb.ataio.res.lba_mid_exp) << 32) |
+    ((u_int64_t)(ccb.ataio.res.lba_high_exp) << 40);
+
+  request->u.ata.count = ccb.ataio.res.sector_count | (ccb.ataio.res.sector_count_exp << 8);
+  request->error = ccb.ataio.res.error;
+
   return 0;
 }
 
 #endif
 
 /////////////////////////////////////////////////////////////////////////////
-/// Implement AMCC/3ware RAID support with old functions
+/// Implement AMCC/3ware RAID support
 
 class freebsd_escalade_device
-: public /*implements*/ ata_device_with_command_set,
+: public /*implements*/ ata_device,
   public /*extends*/ freebsd_smart_device
 {
 public:
@@ -440,7 +478,7 @@ public:
     int escalade_type, int disknum);
 
 protected:
-  virtual int ata_command_interface(smart_command_set command, int select, char * data);
+  virtual bool ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out);
   virtual bool open();
 
 private:
@@ -473,13 +511,18 @@ bool freebsd_escalade_device::open()
   return true;
 }
 
-int freebsd_escalade_device::ata_command_interface(smart_command_set command, int select, char * data)
+bool freebsd_escalade_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
 {
   // to hold true file descriptor
   int fd = get_fd();
 
-  // return value and buffer for ioctl()
-  int  ioctlreturn, readdata=0;
+  if (!ata_cmd_is_ok(in,
+    true, // data_out_support
+    false, // TODO: multi_sector_support
+    true) // ata_48bit_support
+  )
+  return false;
+
   struct twe_usercommand* cmd_twe = NULL;
   TW_OSLI_IOCTL_NO_DATA_BUF* cmd_twa = NULL;
   TWE_Command_ATA* ata = NULL;
@@ -497,16 +540,16 @@ int freebsd_escalade_device::ata_command_interface(smart_command_set command, in
   if (m_escalade_type==CONTROLLER_3WARE_9000_CHAR) {
     cmd_twa = (TW_OSLI_IOCTL_NO_DATA_BUF*)ioctl_buffer;
     cmd_twa->pdata = ((TW_OSLI_IOCTL_WITH_PAYLOAD*)cmd_twa)->payload.data_buf;
-    cmd_twa->driver_pkt.buffer_length = 512;
+    cmd_twa->driver_pkt.buffer_length = in.size;
+    // using "old" packet format to speak with SATA devices
     ata = (TWE_Command_ATA*)&cmd_twa->cmd_pkt.command.cmd_pkt_7k;
   } else if (m_escalade_type==CONTROLLER_3WARE_678K_CHAR) {
     cmd_twe = (struct twe_usercommand*)ioctl_buffer;
     ata = &cmd_twe->tu_command.ata;
   } else {
-    pout("Unrecognized escalade_type %d in freebsd_3ware_command_interface(disk %d)\n"
-      "Please contact " PACKAGE_BUGREPORT "\n", m_escalade_type, m_disknum);
-    errno=ENOSYS;
-    return -1;
+    return set_err(ENOSYS,
+      "Unrecognized escalade_type %d in linux_3ware_command_interface(disk %d)\n"
+      "Please contact " PACKAGE_BUGREPORT "\n", (int)m_escalade_type, m_disknum);
   }
 
   ata->opcode = TWE_OP_ATA_PASSTHROUGH;
@@ -514,18 +557,20 @@ int freebsd_escalade_device::ata_command_interface(smart_command_set command, in
   // Same for (almost) all commands - but some reset below
   ata->request_id    = 0xFF;
   ata->unit          = m_disknum;
-  ata->status        = 0;           
+  ata->status        = 0;
   ata->flags         = 0x1;
-  ata->drive_head    = 0x0;
-  ata->sector_num    = 0;
-
-  // All SMART commands use this CL/CH signature.  These are magic
-  // values from the ATA specifications.
-  ata->cylinder_lo   = 0x4F;
-  ata->cylinder_hi   = 0xC2;
-
-  // SMART ATA COMMAND REGISTER value
-  ata->command       = ATA_SMART_CMD;
+  ata->size         = 0x5; // TODO: multisector support
+  // Set registers
+  {
+    const ata_in_regs_48bit & r = in.in_regs;
+    ata->features     = r.features_16;
+    ata->sector_count = r.sector_count_16;
+    ata->sector_num   = r.lba_low_16;
+    ata->cylinder_lo  = r.lba_mid_16;
+    ata->cylinder_hi  = r.lba_high_16;
+    ata->drive_head   = r.device;
+    ata->command      = r.command;
+  }
 
   // Is this a command that reads or returns 512 bytes?
   // passthru->param values are:
@@ -534,113 +579,51 @@ int freebsd_escalade_device::ata_command_interface(smart_command_set command, in
   // 0xD - data command that returns data to host from device
   // 0xF - data command that writes data from host to device
   // passthru->size values are 0x5 for non-data and 0x07 for data
-  if (command == READ_VALUES     ||
-      command == READ_THRESHOLDS ||
-      command == READ_LOG        ||
-      command == IDENTIFY        ||
-      command == WRITE_LOG ) 
-  {
-    readdata=1;
+  bool readdata = false;
+  if (in.direction == ata_cmd_in::data_in) {
     if (m_escalade_type==CONTROLLER_3WARE_678K_CHAR) {
-      cmd_twe->tu_data = data;
+      cmd_twe->tu_data = in.buffer;
       cmd_twe->tu_size = 512;
     }
-    ata->sgl_offset = 0x5;
-    ata->size         = 0x5;
+
+    readdata=true;
+    ata->sgl_offset   = 0x5;
     ata->param        = 0xD;
-    ata->sector_count = 0x1;
     // For 64-bit to work correctly, up the size of the command packet
     // in dwords by 1 to account for the 64-bit single sgl 'address'
     // field. Note that this doesn't agree with the typedefs but it's
     // right (agree with kernel driver behavior/typedefs).
-    //if (sizeof(long)==8)
+    // if (sizeof(long)==8)
     //  ata->size++;
   }
-  else {
+  else if (in.direction == ata_cmd_in::no_data) {
     // Non data command -- but doesn't use large sector 
-    // count register values.  
-    ata->sgl_offset = 0x0;
-    ata->size         = 0x5;
+    // count register values.
+    ata->sgl_offset   = 0x0;
     ata->param        = 0x8;
     ata->sector_count = 0x0;
   }
+  else if (in.direction == ata_cmd_in::data_out) {
+    ata->sgl_offset   = 0x5;
+    ata->param        = 0xF; // PIO data write
+    if (m_escalade_type==CONTROLLER_3WARE_678K_CHAR) {
+      cmd_twe->tu_data = in.buffer;
+      cmd_twe->tu_size = 512;
+    }
+    else if (m_escalade_type==CONTROLLER_3WARE_9000_CHAR) {
+       memcpy(cmd_twa->pdata, in.buffer, in.size);
+    }
+  }
+  else
+    return set_err(EINVAL);
 
-  // Now set ATA registers depending upon command
-  switch (command){
-  case CHECK_POWER_MODE:
-    ata->command     = ATA_CHECK_POWER_MODE;
-    ata->features    = 0;
-    ata->cylinder_lo = 0;
-    ata->cylinder_hi = 0;
-    break;
-  case READ_VALUES:
-    ata->features = ATA_SMART_READ_VALUES;
-    break;
-  case READ_THRESHOLDS:
-    ata->features = ATA_SMART_READ_THRESHOLDS;
-    break;
-  case READ_LOG:
-    ata->features = ATA_SMART_READ_LOG_SECTOR;
-    // log number to return
-    ata->sector_num  = select;
-    break;
-  case WRITE_LOG:
-    readdata=0;
-    ata->features     = ATA_SMART_WRITE_LOG_SECTOR;
-    ata->sector_count = 1;
-    ata->sector_num   = select;
-    ata->param        = 0xF;  // PIO data write
-    break;
-  case IDENTIFY:
-    // ATA IDENTIFY DEVICE
-    ata->command     = ATA_IDENTIFY_DEVICE;
-    ata->features    = 0;
-    ata->cylinder_lo = 0;
-    ata->cylinder_hi = 0;
-    break;
-  case PIDENTIFY:
-    // 3WARE controller can NOT have packet device internally
-    pout("WARNING - NO DEVICE FOUND ON 3WARE CONTROLLER (disk %d)\n", m_disknum);
-    errno=ENODEV;
-    return -1;
-  case ENABLE:
-    ata->features = ATA_SMART_ENABLE;
-    break;
-  case DISABLE:
-    ata->features = ATA_SMART_DISABLE;
-    break;
-  case AUTO_OFFLINE:
-    ata->features     = ATA_SMART_AUTO_OFFLINE;
-    // Enable or disable?
-    ata->sector_count = select;
-    break;
-  case AUTOSAVE:
-    ata->features     = ATA_SMART_AUTOSAVE;
-    // Enable or disable?
-    ata->sector_count = select;
-    break;
-  case IMMEDIATE_OFFLINE:
-    ata->features    = ATA_SMART_IMMEDIATE_OFFLINE;
-    // What test type to run?
-    ata->sector_num  = select;
-    break;
-  case STATUS_CHECK:
-    ata->features = ATA_SMART_STATUS;
-    break;
-  case STATUS:
-    // This is JUST to see if SMART is enabled, by giving SMART status
-    // command. But it doesn't say if status was good, or failing.
-    // See below for the difference.
-    ata->features = ATA_SMART_STATUS;
-    break;
-  default:
-    pout("Unrecognized command %d in freebsd_3ware_command_interface(disk %d)\n"
-         "Please contact " PACKAGE_BUGREPORT "\n", command, m_disknum);
-    errno=ENOSYS;
-    return -1;
+  // 3WARE controller can NOT have packet device internally
+  if (in.in_regs.command == ATA_IDENTIFY_PACKET_DEVICE) {
+    return set_err(ENODEV, "No drive on port %d", m_disknum);
   }
 
   // Now send the command down through an ioctl()
+  int ioctlreturn;
   if (m_escalade_type==CONTROLLER_3WARE_9000_CHAR) {
     ioctlreturn=ioctl(fd,TW_OSL_IOCTL_FIRMWARE_PASS_THROUGH,cmd_twa);
   } else {
@@ -649,9 +632,7 @@ int freebsd_escalade_device::ata_command_interface(smart_command_set command, in
 
   // Deal with the different error cases
   if (ioctlreturn) {
-    if (!errno)
-      errno=EIO;
-    return -1;
+    return set_err(EIO);
   }
 
   // See if the ATA command failed.  Now that we have returned from
@@ -667,50 +648,36 @@ int freebsd_escalade_device::ata_command_interface(smart_command_set command, in
   // happened.
 
   if (ata->status || (ata->command & 0x21)) {
-    pout("Command failed, ata.status=(0x%2.2x), ata.command=(0x%2.2x), ata.flags=(0x%2.2x)\n",ata->status,ata->command,ata->flags);
-    errno=EIO;
-    return -1;
+    if (scsi_debugmode)
+      pout("Command failed, ata.status=(0x%2.2x), ata.command=(0x%2.2x), ata.flags=(0x%2.2x)\n",ata->status,ata->command,ata->flags);
+    return set_err(EIO);
   }
 
   // If this is a read data command, copy data to output buffer
   if (readdata) {
     if (m_escalade_type==CONTROLLER_3WARE_9000_CHAR)
-      memcpy(data, cmd_twa->pdata, 512);
+      memcpy(in.buffer, cmd_twa->pdata, in.size);
+    else if(m_escalade_type==CONTROLLER_3WARE_678K_CHAR) {
+      memcpy(in.buffer, cmd_twe->tu_data, in.size); // untested
+    }
   }
-
-  // For STATUS_CHECK, we need to check register values
-  if (command==STATUS_CHECK) {
-
-    // To find out if the SMART RETURN STATUS is good or failing, we
-    // need to examine the values of the Cylinder Low and Cylinder
-    // High Registers.
-
-    unsigned short cyl_lo=ata->cylinder_lo;
-    unsigned short cyl_hi=ata->cylinder_hi;
-
-    // If values in Cyl-LO and Cyl-HI are unchanged, SMART status is good.
-    if (cyl_lo==0x4F && cyl_hi==0xC2)
-      return 0;
-
-    // If values in Cyl-LO and Cyl-HI are as follows, SMART status is FAIL
-    if (cyl_lo==0xF4 && cyl_hi==0x2C)
-      return 1;
-
-      errno=EIO;
-      return -1;
+  // Return register values
+  if (ata) {
+    ata_out_regs_48bit & r = out.out_regs;
+    r.error           = ata->features;
+    r.sector_count_16 = ata->sector_count;
+    r.lba_low_16      = ata->sector_num;
+    r.lba_mid_16      = ata->cylinder_lo;
+    r.lba_high_16     = ata->cylinder_hi;
+    r.device          = ata->drive_head;
+    r.status          = ata->command;
   }
-
-  // copy sector count register (one byte!) to return data
-  if (command==CHECK_POWER_MODE)
-    *data=*(char *)&(ata->sector_count);
-
   // look for nonexistent devices/ports
-  if (command==IDENTIFY && !nonempty(data, 512)) {
-    errno=ENODEV;
-    return -1;
+  if (in.in_regs.command == ATA_IDENTIFY_DEVICE
+  && !nonempty((unsigned char *)in.buffer, in.size)) {
+    return set_err(ENODEV, "No drive on port %d", m_disknum);
   }
-
-  return 0;
+  return true;
 }
 
 
@@ -891,7 +858,8 @@ int freebsd_highpoint_device::ata_command_interface(smart_command_set command, i
 
     // We haven't gotten output that makes sense; print out some debugging info
     char buf[512];
-    sprintf(buf,"CMD=0x%02x\nFR =0x%02x\nNS =0x%02x\nSC =0x%02x\nCL =0x%02x\nCH =0x%02x\nRETURN =0x%04x\n",
+    snprintf(buf, sizeof(buf),
+            "CMD=0x%02x\nFR =0x%02x\nNS =0x%02x\nSC =0x%02x\nCL =0x%02x\nCH =0x%02x\nRETURN =0x%04x\n",
             (int)pide_pt_hdr_out->command,
             (int)pide_pt_hdr_out->feature,
             (int)pide_pt_hdr_out->sectorcount,
@@ -911,7 +879,7 @@ int freebsd_highpoint_device::ata_command_interface(smart_command_set command, i
 
 
 /////////////////////////////////////////////////////////////////////////////
-/// Implement standard SCSI support with old functions
+/// Standard SCSI support
 
 class freebsd_scsi_device
 : public /*implements*/ scsi_device,
@@ -993,7 +961,24 @@ bool freebsd_scsi_device::scsi_pass_through(scsi_cmnd_io * iop)
     warnx("error allocating ccb");
     return -ENOMEM;
   }
-
+  // mfi SAT layer is known to be buggy
+  if(!strcmp("mfi",m_camdev->sim_name)) {
+    if (iop->cmnd[0] == SAT_ATA_PASSTHROUGH_12 || iop->cmnd[0] == SAT_ATA_PASSTHROUGH_16) { 
+      // Controller does not return ATA output registers in SAT sense data
+      if (iop->cmnd[2] & (1 << 5)) // chk_cond
+        return set_err(ENOSYS, "ATA return descriptor not supported by controller firmware");
+    }
+    // SMART WRITE LOG SECTOR causing media errors
+    if ((iop->cmnd[0] == SAT_ATA_PASSTHROUGH_16
+        && iop->cmnd[14] == ATA_SMART_CMD  && iop->cmnd[3]==0 &&
+        iop->cmnd[4] == ATA_SMART_WRITE_LOG_SECTOR) ||
+        (iop->cmnd[0] == SAT_ATA_PASSTHROUGH_12
+        && iop->cmnd[9] == ATA_SMART_CMD && iop->cmnd[3] == ATA_SMART_WRITE_LOG_SECTOR))
+    {
+      if(!failuretest_permissive)
+        return set_err(ENOSYS, "SMART WRITE LOG SECTOR may cause problems, try with -T permissive to force"); 
+    }
+  }
   // clear out structure, except for header that was filled in for us
   bzero(&(&ccb->ccb_h)[1],
     sizeof(struct ccb_scsiio) - sizeof(struct ccb_hdr));
@@ -1012,24 +997,20 @@ bool freebsd_scsi_device::scsi_pass_through(scsi_cmnd_io * iop)
 
   if (cam_send_ccb(m_camdev,ccb) < 0) {
     warn("error sending SCSI ccb");
-#if (FREEBSDVER > 500000)
     cam_error_print(m_camdev,ccb,CAM_ESF_ALL,CAM_EPF_ALL,stderr);
-#endif
     cam_freeccb(ccb);
     return -EIO;
   }
 
   if (((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) && ((ccb->ccb_h.status & CAM_STATUS_MASK) != CAM_SCSI_STATUS_ERROR)) {
-#if (FREEBSDVER > 500000)
     cam_error_print(m_camdev,ccb,CAM_ESF_ALL,CAM_EPF_ALL,stderr);
-#endif
     cam_freeccb(ccb);
     return -EIO;
   }
 
   if (iop->sensep) {
-    memcpy(iop->sensep,&(ccb->csio.sense_data),sizeof(struct scsi_sense_data));
-    iop->resp_sense_len = sizeof(struct scsi_sense_data);
+    iop->resp_sense_len = ccb->csio.sense_len - ccb->csio.sense_resid;
+    memcpy(iop->sensep,&(ccb->csio.sense_data),iop->resp_sense_len);
   }
 
   iop->scsi_status = ccb->csio.scsi_status;
@@ -1047,6 +1028,162 @@ bool freebsd_scsi_device::scsi_pass_through(scsi_cmnd_io * iop)
     dStrHex(iop->dxferp, (trunc ? 256 : iop->dxfer_len) , 1);
   }
 
+  // mfip replacing PDT of the device so response does not make a sense
+  // this sets PDT to 00h - direct-access block device
+  if((!strcmp("mfi", m_camdev->sim_name) || !strcmp("mpt", m_camdev->sim_name))
+   && iop->cmnd[0] == INQUIRY) {
+     if (report > 0) {
+        pout("device on %s controller, patching PDT\n", m_camdev->sim_name);
+     }
+     iop->dxferp[0] = iop->dxferp[0] & 0xe0;
+  }
+
+  return true;
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+/// Areca RAID support
+
+///////////////////////////////////////////////////////////////////
+// SATA(ATA) device behind Areca RAID Controller
+class freebsd_areca_ata_device
+: public /*implements*/ areca_ata_device,
+  public /*extends*/ freebsd_smart_device
+{
+public:
+  freebsd_areca_ata_device(smart_interface * intf, const char * dev_name, int disknum, int encnum = 1);
+  virtual smart_device * autodetect_open();
+  virtual bool arcmsr_lock();
+  virtual bool arcmsr_unlock();
+  virtual int arcmsr_do_scsi_io(struct scsi_cmnd_io * iop);
+};
+
+///////////////////////////////////////////////////////////////////
+// SAS(SCSI) device behind Areca RAID Controller
+class freebsd_areca_scsi_device
+: public /*implements*/ areca_scsi_device,
+  public /*extends*/ freebsd_smart_device
+{
+public:
+  freebsd_areca_scsi_device(smart_interface * intf, const char * dev_name, int disknum, int encnum = 1);
+  virtual smart_device * autodetect_open();
+  virtual bool arcmsr_lock();
+  virtual bool arcmsr_unlock();
+  virtual int arcmsr_do_scsi_io(struct scsi_cmnd_io * iop);
+};
+
+
+// Areca RAID Controller(SATA Disk)
+freebsd_areca_ata_device::freebsd_areca_ata_device(smart_interface * intf, const char * dev_name, int disknum, int encnum)
+: smart_device(intf, dev_name, "areca", "areca"),
+  freebsd_smart_device("ATA")
+{
+  set_disknum(disknum);
+  set_encnum(encnum);
+  set_info().info_name = strprintf("%s [areca_disk#%02d_enc#%02d]", dev_name, disknum, encnum);
+}
+
+
+smart_device * freebsd_areca_ata_device::autodetect_open()
+{
+  int is_ata = 1;
+
+  // autodetect device type
+  is_ata = arcmsr_get_dev_type();
+  if(is_ata < 0)
+  {
+    set_err(EIO);
+    return this;
+  }
+
+  if(is_ata == 1)
+  {
+    // SATA device
+    return this;
+  }
+
+  // SAS device
+  smart_device_auto_ptr newdev(new freebsd_areca_scsi_device(smi(), get_dev_name(), get_disknum(), get_encnum()));
+  close();
+  delete this;
+  newdev->open();	// TODO: Can possibly pass open fd
+
+  return newdev.release();
+}
+
+int freebsd_areca_ata_device::arcmsr_do_scsi_io(struct scsi_cmnd_io * iop)
+{
+  int ioctlreturn = 0;
+
+  if(!is_open()) {
+      if(!open()){
+      }
+  }
+
+  ioctlreturn = ioctl(get_fd(), ((sSRB_BUFFER *)(iop->dxferp))->srbioctl.ControlCode, iop->dxferp);
+  if (ioctlreturn)
+  {
+    // errors found
+    return -1;
+  }
+
+  return ioctlreturn;
+}
+
+bool freebsd_areca_ata_device::arcmsr_lock()
+{
+  return true;
+}
+
+
+bool freebsd_areca_ata_device::arcmsr_unlock()
+{
+  return true;
+}
+
+
+// Areca RAID Controller(SAS Device)
+freebsd_areca_scsi_device::freebsd_areca_scsi_device(smart_interface * intf, const char * dev_name, int disknum, int encnum)
+: smart_device(intf, dev_name, "areca", "areca"),
+  freebsd_smart_device("SCSI")
+{
+  set_disknum(disknum);
+  set_encnum(encnum);
+  set_info().info_name = strprintf("%s [areca_disk#%02d_enc#%02d]", dev_name, disknum, encnum);
+}
+
+smart_device * freebsd_areca_scsi_device::autodetect_open()
+{
+  return this;
+}
+
+int freebsd_areca_scsi_device::arcmsr_do_scsi_io(struct scsi_cmnd_io * iop)
+{
+  int ioctlreturn = 0;
+
+  if(!is_open()) {
+      if(!open()){
+      }
+  }
+  ioctlreturn = ioctl(get_fd(), ((sSRB_BUFFER *)(iop->dxferp))->srbioctl.ControlCode, iop->dxferp);
+  if (ioctlreturn)
+  {
+    // errors found
+    return -1;
+  }
+
+  return ioctlreturn;
+}
+
+bool freebsd_areca_scsi_device::arcmsr_lock()
+{
+  return true;
+}
+
+
+bool freebsd_areca_scsi_device::arcmsr_unlock()
+{
   return true;
 }
 
@@ -1072,11 +1209,6 @@ bool freebsd_cciss_device::open()
 {
   const char *dev = get_dev_name();
   int fd;
-#ifndef HAVE_DEV_CISS_CISSIO_H
-  pout("CCISS support is not available in this build of smartmontools,\n"
-    "/usr/src/sys/dev/ciss/cissio.h was not available at build time.\n\n");
-  return false;
-#endif  
   if ((fd = ::open(dev,O_RDWR))<0) {
     set_err(errno);
     return false;
@@ -1096,12 +1228,10 @@ freebsd_cciss_device::freebsd_cciss_device(smart_interface * intf,
 
 bool freebsd_cciss_device::scsi_pass_through(scsi_cmnd_io * iop)
 {
-#ifdef HAVE_DEV_CISS_CISSIO_H
   int status = cciss_io_interface(get_fd(), m_disknum, iop, scsi_debugmode);
   if (status < 0)
       return set_err(-status);
   return true;
-#endif
   // not reached
   return true;
 }
@@ -1145,19 +1275,26 @@ smart_device * freebsd_scsi_device::autodetect_open()
   // Use INQUIRY to detect type
 
   // 3ware ?
-  if (!memcmp(req_buff + 8, "3ware", 5) || !memcmp(req_buff + 8, "AMCC", 4)) {
+  if (!memcmp(req_buff + 8, "3ware", 5) || !memcmp(req_buff + 8, "AMCC", 4) ||
+      !strcmp("tws",m_camdev->sim_name) || !strcmp("twa",m_camdev->sim_name)) {
     close();
-    set_err(EINVAL, "AMCC/3ware controller, please try adding '-d 3ware,N',\n"
-                    "you may need to replace %s with /dev/twaN or /dev/tweN", get_dev_name());
+    set_err(EINVAL, "3ware/LSI controller, please try adding '-d 3ware,N',\n"
+                    "you may need to replace %s with /dev/twaN, /dev/tweN or /dev/twsN", get_dev_name());
     return this;
   }
 
-  // SAT or USB ?
+  // SAT or USB, skip MFI controllers because of bugs
   {
     smart_device * newdev = smi()->autodetect_sat_device(this, req_buff, len);
-    if (newdev)
+    if (newdev) {
       // NOTE: 'this' is now owned by '*newdev'
+      if(!strcmp("mfi",m_camdev->sim_name)) {
+        newdev->close();
+        newdev->set_err(ENOSYS, "SATA device detected,\n"
+          "MegaRAID SAT layer is reportedly buggy, use '-d sat' to try anyhow");
+      }
       return newdev;
+    }
   }
 
   // Nothing special found
@@ -1311,8 +1448,7 @@ bool get_dev_names_cam(std::vector<std::string> & names, bool show_all)
       if (ccb.cdm.matches[i].type == DEV_MATCH_BUS) {
         bus_result = &ccb.cdm.matches[i].result.bus_result;
 
-        if (strcmp(bus_result->dev_name,"ata") == 0 /* ATAPICAM devices will be probed as ATA devices, skip'em there */
-          || strcmp(bus_result->dev_name,"xpt") == 0) /* skip XPT bus at all */
+        if (strcmp(bus_result->dev_name,"xpt") == 0) /* skip XPT bus at all */
         skip_bus = 1;
         else
           skip_bus = 0;
@@ -1332,10 +1468,13 @@ bool get_dev_names_cam(std::vector<std::string> & names, bool show_all)
       } else if (ccb.cdm.matches[i].type == DEV_MATCH_PERIPH && 
           (skip_device == 0 || show_all)) { 
         /* One device may be populated as many peripherals (pass0 & da0 for example). 
-        * We are searching for latest name
+        * We are searching for best name
         */
         periph_result =  &ccb.cdm.matches[i].result.periph_result;
-        devname = strprintf("%s%s%d", _PATH_DEV, periph_result->periph_name, periph_result->unit_number);
+        /* Prefer non-"pass" names */
+        if (devname.empty() || strncmp(periph_result->periph_name, "pass", 4) != 0) {
+          devname = strprintf("%s%s%d", _PATH_DEV, periph_result->periph_name, periph_result->unit_number);
+	    }
         changed = 0;
       };
       if ((changed == 1 || show_all) && !devname.empty()) {
@@ -1641,10 +1780,23 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
   int bus=-1;
   int i,c;
   int len;
+  const char * test_name = name;
 
   // if dev_name null, or string length zero
   if (!name || !(len = strlen(name)))
-    return false;
+    return 0;
+
+  // Dereference symlinks
+  struct stat st;
+  std::string pathbuf;
+  if (!lstat(name, &st) && S_ISLNK(st.st_mode)) {
+    char * p = realpath(name, (char *)0);
+    if (p) {
+      pathbuf = p;
+      free(p);
+      test_name = pathbuf.c_str();
+    }
+  }
 
   // check ATA bus
   char * * atanames = 0; int numata = 0;
@@ -1652,10 +1804,10 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
   if (numata > 0) {
     // check ATA/ATAPI devices
     for (i = 0; i < numata; i++) {
-      if(!strcmp(atanames[i],name)) {
+      if(!strcmp(atanames[i],test_name)) {
         for (c = i; c < numata; c++) free(atanames[c]);
         free(atanames);
-        return new freebsd_ata_device(this, name, "");
+        return new freebsd_ata_device(this, test_name, "");
       }
       else free(atanames[i]);
     }
@@ -1673,14 +1825,18 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
   else if (!scsinames.empty()) {
     // check all devices on CAM bus
     for (i = 0; i < (int)scsinames.size(); i++) {
-      if(strcmp(scsinames[i].c_str(), name)==0)
+      if(strcmp(scsinames[i].c_str(), test_name)==0)
       { // our disk device is CAM
-        if ((cam_dev = cam_open_device(name, O_RDWR)) == NULL) {
+        if(strncmp(scsinames[i].c_str(), "/dev/pmp", strlen("/dev/pmp")) == 0) {
+          pout("Skipping port multiplier [%s]\n", scsinames[i].c_str());
+          set_err(EINVAL);
+          return 0;
+        }
+        if ((cam_dev = cam_open_device(test_name, O_RDWR)) == NULL) {
           // open failure
           set_err(errno);
-          return false;
+          return 0;
         }
-        
         // zero the payload
         bzero(&(&ccb.ccb_h)[1], PATHINQ_SETTINGS_SIZE);
         ccb.ccb_h.func_code = XPT_PATH_INQ; // send PATH_INQ to the device
@@ -1698,24 +1854,27 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
           if(usbdevlist(bus,vendor_id, product_id, version)){
             const char * usbtype = get_usb_dev_type_by_id(vendor_id, product_id, version);
             if (usbtype)
-              return get_sat_device(usbtype, new freebsd_scsi_device(this, name, ""));
+              return get_sat_device(usbtype, new freebsd_scsi_device(this, test_name, ""));
           }
-          return false;
+          return 0;
         }
 #if FREEBSDVER > 800100
         // check if we have ATA device connected to CAM (ada)
         if(ccb.cpi.protocol == PROTO_ATA){
           cam_close_device(cam_dev);
-          return new freebsd_atacam_device(this, name, "");
+          return new freebsd_atacam_device(this, test_name, "");
         }
 #endif
         // close cam device, we don`t need it anymore
         cam_close_device(cam_dev);
         // handle as usual scsi
-        return new freebsd_scsi_device(this, name, "");      
+        return new freebsd_scsi_device(this, test_name, "");      
       }
     }
   }
+  // device is LSI raid supported by mfi driver
+  if(!strncmp("/dev/mfid", test_name, strlen("/dev/mfid")))
+    set_err(EINVAL, "To monitor disks on LSI RAID load mfip.ko module and run 'smartctl -a /dev/passX' to show SMART information");
   // device type unknown
   return 0;
 }
@@ -1726,6 +1885,7 @@ smart_device * freebsd_smart_interface::get_custom_smart_device(const char * nam
   // 3Ware ?
   static const char * fbsd_dev_twe_ctrl = "/dev/twe";
   static const char * fbsd_dev_twa_ctrl = "/dev/twa";
+  static const char * fbsd_dev_tws_ctrl = "/dev/tws";
   int disknum = -1, n1 = -1, n2 = -1, contr = -1;
 
   if (sscanf(type, "3ware,%n%d%n", &n1, &disknum, &n2) == 1 || n1 == 6) {
@@ -1739,7 +1899,8 @@ smart_device * freebsd_smart_interface::get_custom_smart_device(const char * nam
     }
 
     // guess 3ware device type based on device name
-    if (!strncmp(fbsd_dev_twa_ctrl, name, strlen(fbsd_dev_twa_ctrl))){
+    if (str_starts_with(name, fbsd_dev_twa_ctrl) ||
+        str_starts_with(name, fbsd_dev_tws_ctrl)   ) {
       contr=CONTROLLER_3WARE_9000_CHAR;
     }
     if (!strncmp(fbsd_dev_twe_ctrl, name, strlen(fbsd_dev_twe_ctrl))){
@@ -1747,12 +1908,12 @@ smart_device * freebsd_smart_interface::get_custom_smart_device(const char * nam
     }
 
     if(contr == -1){
-      set_err(EINVAL, "3ware controller type unknown, use %sX or %sX devices", 
-        fbsd_dev_twe_ctrl, fbsd_dev_twa_ctrl);
+      set_err(EINVAL, "3ware controller type unknown, use %sX, %sX or %sX devices", 
+        fbsd_dev_twe_ctrl, fbsd_dev_twa_ctrl, fbsd_dev_tws_ctrl);
       return 0;
     }
     return new freebsd_escalade_device(this, name, contr, disknum);
-  } 
+  }
 
   // Highpoint ?
   int controller = -1, channel = -1; disknum = 1;
@@ -1767,7 +1928,7 @@ smart_device * freebsd_smart_interface::get_custom_smart_device(const char * nam
       set_err(EINVAL, "Option '-d hpt,L/M/N' invalid controller id L supplied");
       return 0;
     }
-    if (!(1 <= channel && channel <= 8)) {
+    if (!(1 <= channel && channel <= 128)) {
       set_err(EINVAL, "Option '-d hpt,L/M/N' invalid channel number M supplied");
       return 0;
     }
@@ -1789,20 +1950,34 @@ smart_device * freebsd_smart_interface::get_custom_smart_device(const char * nam
       set_err(EINVAL, "Option -d cciss,N (N=%d) must have 0 <= N <= 127", disknum);
       return 0;
     }
-    return new freebsd_cciss_device(this, name, disknum);
+    return get_sat_device("sat,auto", new freebsd_cciss_device(this, name, disknum));
   }
 #if FREEBSDVER > 800100
   // adaX devices ?
   if(!strcmp(type,"atacam"))
     return new freebsd_atacam_device(this, name, "");
 #endif
+  // Areca?
+  disknum = n1 = n2 = -1;
+  int encnum = 1;
+  if (sscanf(type, "areca,%n%d/%d%n", &n1, &disknum, &encnum, &n2) >= 1 || n1 == 6) {
+    if (!(1 <= disknum && disknum <= 128)) {
+      set_err(EINVAL, "Option -d areca,N/E (N=%d) must have 1 <= N <= 128", disknum);
+      return 0;
+    }
+    if (!(1 <= encnum && encnum <= 8)) {
+      set_err(EINVAL, "Option -d areca,N/E (E=%d) must have 1 <= E <= 8", encnum);
+      return 0;
+    }
+    return new freebsd_areca_ata_device(this, name, disknum, encnum);
+  }
 
   return 0;
 }
 
 std::string freebsd_smart_interface::get_valid_custom_dev_types_str()
 {
-  return "3ware,N, hpt,L/M/N, cciss,N"
+  return "3ware,N, hpt,L/M/N, cciss,N, areca,N/E"
 #if FREEBSDVER > 800100
   ", atacam"
 #endif

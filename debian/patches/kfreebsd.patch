@@ -1,0 +1,33 @@
+--- a/dev_areca.h
++++ b/dev_areca.h
+@@ -58,7 +58,7 @@
+ #define ARCMSR_IOCTL_CLEAR_RQBUFFER          (ARECA_SATA_RAID | FUNCTION_CLEAR_RQBUFFER)
+ #define ARCMSR_IOCTL_CLEAR_WQBUFFER          (ARECA_SATA_RAID | FUNCTION_CLEAR_WQBUFFER)
+ #define ARCMSR_IOCTL_RETURN_CODE_3F          (ARECA_SATA_RAID | FUNCTION_RETURN_CODE_3F)
+-#elif defined(__FreeBSD__)
++#elif defined(__FreeBSD__)  || defined(__FreeBSD_kernel__)
+ #include <sys/ioctl.h> // _IOWR
+ 
+ /*FunctionCode*/
+--- a/cciss.cpp
++++ b/cciss.cpp
+@@ -18,18 +18,10 @@
+ #  ifndef be32toh
+ #    define be32toh __be32_to_cpu
+ #  endif
+-#elif defined(__FreeBSD__)
++#elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
+ #  include <sys/endian.h>
+ #  include CISS_LOCATION
+ #  define _HAVE_CCISS
+-#elif defined(__FreeBSD_kernel__)
+-#  include <endian.h>
+-#  ifdef __GLIBC__
+-#  include <bsd/sys/cdefs.h>
+-#  include <stdint.h>
+-#  endif
+-#  include CISS_LOCATION
+-#  define _HAVE_CCISS
+ #endif
+ 
+ #ifdef _HAVE_CCISS

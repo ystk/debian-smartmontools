@@ -4,7 +4,7 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  *
  * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  * Copyright (C) 2000 Andre Hedrick <andre@linux-ide.org>
  *
@@ -14,8 +14,7 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
  *
  * This code was originally developed as a Senior Thesis by Michael Cornwell
  * at the Concurrent Systems Laboratory (now part of the Storage Systems
@@ -36,7 +35,7 @@
 #include "utility.h"
 #include "dev_ata_cmd_set.h" // for parsed_ata_device
 
-const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 3345 2011-05-25 20:50:02Z chrfranke $"
+const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 3825 2013-07-06 21:38:25Z samm2 $"
                                  ATACMDS_H_CVSID;
 
 // Print ATA debug messages?
@@ -57,103 +56,6 @@ bool dont_print_serial_number = false;
 #define SRET_STATUS_HI_EXCEEDED 0x2C
 #define SRET_STATUS_MID_EXCEEDED 0xF4
 
-// These Drive Identity tables are taken from hdparm 5.2, and are also
-// given in the ATA/ATAPI specs for the IDENTIFY DEVICE command.  Note
-// that SMART was first added into the ATA/ATAPI-3 Standard with
-// Revision 3 of the document, July 25, 1995.  Look at the "Document
-// Status" revision commands at the beginning of
-// http://www.t13.org/Documents/UploadedDocuments/project/d2008r7b-ATA-3.pdf
-// to see this.
-#define NOVAL_0                 0x0000
-#define NOVAL_1                 0xffff
-/* word 81: minor version number */
-#define MINOR_MAX 0x22
-static const char * const minor_str[] = {       /* word 81 value: */
-  "Device does not report version",             /* 0x0000       */
-  "ATA-1 X3T9.2 781D prior to revision 4",      /* 0x0001       */
-  "ATA-1 published, ANSI X3.221-1994",          /* 0x0002       */
-  "ATA-1 X3T9.2 781D revision 4",               /* 0x0003       */
-  "ATA-2 published, ANSI X3.279-1996",          /* 0x0004       */
-  "ATA-2 X3T10 948D prior to revision 2k",      /* 0x0005       */
-  "ATA-3 X3T10 2008D revision 1",               /* 0x0006       */ /* SMART NOT INCLUDED */
-  "ATA-2 X3T10 948D revision 2k",               /* 0x0007       */
-  "ATA-3 X3T10 2008D revision 0",               /* 0x0008       */ 
-  "ATA-2 X3T10 948D revision 3",                /* 0x0009       */
-  "ATA-3 published, ANSI X3.298-199x",          /* 0x000a       */
-  "ATA-3 X3T10 2008D revision 6",               /* 0x000b       */ /* 1st VERSION WITH SMART */
-  "ATA-3 X3T13 2008D revision 7 and 7a",        /* 0x000c       */
-  "ATA/ATAPI-4 X3T13 1153D revision 6",         /* 0x000d       */
-  "ATA/ATAPI-4 T13 1153D revision 13",          /* 0x000e       */
-  "ATA/ATAPI-4 X3T13 1153D revision 7",         /* 0x000f       */
-  "ATA/ATAPI-4 T13 1153D revision 18",          /* 0x0010       */
-  "ATA/ATAPI-4 T13 1153D revision 15",          /* 0x0011       */
-  "ATA/ATAPI-4 published, ANSI NCITS 317-1998", /* 0x0012       */
-  "ATA/ATAPI-5 T13 1321D revision 3",           /* 0x0013       */
-  "ATA/ATAPI-4 T13 1153D revision 14",          /* 0x0014       */
-  "ATA/ATAPI-5 T13 1321D revision 1",           /* 0x0015       */
-  "ATA/ATAPI-5 published, ANSI NCITS 340-2000", /* 0x0016       */
-  "ATA/ATAPI-4 T13 1153D revision 17",          /* 0x0017       */
-  "ATA/ATAPI-6 T13 1410D revision 0",           /* 0x0018       */
-  "ATA/ATAPI-6 T13 1410D revision 3a",          /* 0x0019       */
-  "ATA/ATAPI-7 T13 1532D revision 1",           /* 0x001a       */
-  "ATA/ATAPI-6 T13 1410D revision 2",           /* 0x001b       */
-  "ATA/ATAPI-6 T13 1410D revision 1",           /* 0x001c       */
-  "ATA/ATAPI-7 published, ANSI INCITS 397-2005",/* 0x001d       */
-  "ATA/ATAPI-7 T13 1532D revision 0",           /* 0x001e       */
-  "reserved",                                   /* 0x001f       */
-  "reserved",                                   /* 0x0020       */
-  "ATA/ATAPI-7 T13 1532D revision 4a",          /* 0x0021       */
-  "ATA/ATAPI-6 published, ANSI INCITS 361-2002" /* 0x0022       */
-};
-
-// NOTE ATA/ATAPI-4 REV 4 was the LAST revision where the device
-// attribute structures were NOT completely vendor specific.  So any
-// disk that is ATA/ATAPI-4 or above can not be trusted to show the
-// vendor values in sensible format.
-
-// Negative values below are because it doesn't support SMART
-static const int actual_ver[] = { 
-  /* word 81 value: */
-  0,            /* 0x0000       WARNING:        */
-  1,            /* 0x0001       WARNING:        */
-  1,            /* 0x0002       WARNING:        */
-  1,            /* 0x0003       WARNING:        */
-  2,            /* 0x0004       WARNING:   This array           */
-  2,            /* 0x0005       WARNING:   corresponds          */
-  -3, /*<== */  /* 0x0006       WARNING:   *exactly*            */
-  2,            /* 0x0007       WARNING:   to the ATA/          */
-  -3, /*<== */  /* 0x0008       WARNING:   ATAPI version        */
-  2,            /* 0x0009       WARNING:   listed in            */
-  3,            /* 0x000a       WARNING:   the                  */
-  3,            /* 0x000b       WARNING:   minor_str            */
-  3,            /* 0x000c       WARNING:   array                */
-  4,            /* 0x000d       WARNING:   above.               */
-  4,            /* 0x000e       WARNING:                        */
-  4,            /* 0x000f       WARNING:   If you change        */
-  4,            /* 0x0010       WARNING:   that one,            */
-  4,            /* 0x0011       WARNING:   change this one      */
-  4,            /* 0x0012       WARNING:   too!!!               */
-  5,            /* 0x0013       WARNING:        */
-  4,            /* 0x0014       WARNING:        */
-  5,            /* 0x0015       WARNING:        */
-  5,            /* 0x0016       WARNING:        */
-  4,            /* 0x0017       WARNING:        */
-  6,            /* 0x0018       WARNING:        */
-  6,            /* 0x0019       WARNING:        */
-  7,            /* 0x001a       WARNING:        */
-  6,            /* 0x001b       WARNING:        */
-  6,            /* 0x001c       WARNING:        */
-  7,            /* 0x001d       WARNING:        */
-  7,            /* 0x001e       WARNING:        */
-  0,            /* 0x001f       WARNING:        */
-  0,            /* 0x0020       WARNING:        */
-  7,            /* 0x0021       WARNING:        */
-  6             /* 0x0022       WARNING:        */
-};
-
-// Compile time check of above array sizes
-typedef char assert_sizeof_minor_str [sizeof(minor_str) /sizeof(minor_str[0])  == MINOR_MAX+1 ? 1 : -1];
-typedef char assert_sizeof_actual_ver[sizeof(actual_ver)/sizeof(actual_ver[0]) == MINOR_MAX+1 ? 1 : -1];
 
 // Get ID and increase flag of current pending or offline
 // uncorrectable attribute.
@@ -212,10 +114,13 @@ const format_name_entry format_names[] = {
   {"raw16"          , RAWFMT_RAW16},
   {"raw48"          , RAWFMT_RAW48},
   {"hex48"          , RAWFMT_HEX48},
+  {"raw56"          , RAWFMT_RAW56},
+  {"hex56"          , RAWFMT_HEX56},
   {"raw64"          , RAWFMT_RAW64},
   {"hex64"          , RAWFMT_HEX64},
   {"raw16(raw16)"   , RAWFMT_RAW16_OPT_RAW16},
   {"raw16(avg16)"   , RAWFMT_RAW16_OPT_AVG16},
+  {"raw24(raw8)"    , RAWFMT_RAW24_OPT_RAW8},
   {"raw24/raw24"    , RAWFMT_RAW24_DIV_RAW24},
   {"raw24/raw32"    , RAWFMT_RAW24_DIV_RAW32},
   {"sec2hour"       , RAWFMT_SEC2HOUR},
@@ -243,7 +148,7 @@ const char * map_old_vendor_opts[][2] = {
   {"198,increasing"               , "198,raw48+,Total_Offl_Uncorrectabl"}, // '+' sets flag
   {"200,writeerrorcount"          , "200,raw48,Write_Error_Count"},
   {"201,detectedtacount"          , "201,raw48,Detected_TA_Count"},
-  {"220,temp"                     , "220,raw48,Temperature_Celsius"},
+  {"220,temp"                     , "220,tempminmax,Temperature_Celsius"},
 };
 
 const unsigned num_old_vendor_opts = sizeof(map_old_vendor_opts)/sizeof(map_old_vendor_opts[0]);
@@ -324,7 +229,7 @@ bool parse_attribute_def(const char * opt, ata_vendor_attr_defs & defs,
       defs[i].priority = priority;
       defs[i].raw_format = format;
       defs[i].flags = flags;
-      strcpy(defs[i].byteorder, byteorder);
+      snprintf(defs[i].byteorder, sizeof(defs[i].byteorder), "%s", byteorder);
     }
   }
   else if (defs[id].priority <= priority) {
@@ -334,7 +239,7 @@ bool parse_attribute_def(const char * opt, ata_vendor_attr_defs & defs,
     defs[id].raw_format = format;
     defs[id].priority = priority;
     defs[id].flags = flags;
-    strcpy(defs[id].byteorder, byteorder);
+    snprintf(defs[id].byteorder, sizeof(defs[id].byteorder), "%s", byteorder);
   }
 
   return true;
@@ -355,6 +260,35 @@ std::string create_vendor_attribute_arg_list()
     s += strprintf("\n\t%s", map_old_vendor_opts[i][0]);
   return s;
 }
+
+
+// Parse firmwarebug def (-F option).
+// Return false on error.
+bool parse_firmwarebug_def(const char * opt, firmwarebug_defs & firmwarebugs)
+{
+    if (!strcmp(opt, "none"))
+      firmwarebugs.set(BUG_NONE);
+    else if (!strcmp(opt, "nologdir"))
+      firmwarebugs.set(BUG_NOLOGDIR);
+    else if (!strcmp(opt, "samsung"))
+      firmwarebugs.set(BUG_SAMSUNG);
+    else if (!strcmp(opt, "samsung2"))
+      firmwarebugs.set(BUG_SAMSUNG2);
+    else if (!strcmp(opt, "samsung3"))
+      firmwarebugs.set(BUG_SAMSUNG3);
+    else if (!strcmp(opt, "xerrorlba"))
+      firmwarebugs.set(BUG_XERRORLBA);
+    else
+      return false;
+    return true;
+}
+
+// Return a string of valid argument words for parse_firmwarebug_def()
+const char * get_valid_firmwarebug_args()
+{
+  return "none, nologdir, samsung, samsung2, samsung3, xerrorlba";
+}
+
 
 // swap two bytes.  Point to low address
 void swap2(char *location){
@@ -430,17 +364,18 @@ static const char * const commandstrings[]={
 };
 
 
-static const char * preg(const ata_register & r, char * buf)
+static const char * preg(const ata_register & r, char (& buf)[8])
 {
   if (!r.is_set())
     //return "n/a ";
     return "....";
-  sprintf(buf, "0x%02x", r.val()); return buf;
+  snprintf(buf, sizeof(buf), "0x%02x", r.val());
+  return buf;
 }
 
 static void print_regs(const char * prefix, const ata_in_regs & r, const char * suffix = "\n")
 {
-  char bufs[7][4+1+13];
+  char bufs[7][8];
   pout("%s FR=%s, SC=%s, LL=%s, LM=%s, LH=%s, DEV=%s, CMD=%s%s", prefix,
     preg(r.features, bufs[0]), preg(r.sector_count, bufs[1]), preg(r.lba_low, bufs[2]),
     preg(r.lba_mid, bufs[3]), preg(r.lba_high, bufs[4]), preg(r.device, bufs[5]),
@@ -449,7 +384,7 @@ static void print_regs(const char * prefix, const ata_in_regs & r, const char * 
 
 static void print_regs(const char * prefix, const ata_out_regs & r, const char * suffix = "\n")
 {
-  char bufs[7][4+1+13];
+  char bufs[7][8];
   pout("%sERR=%s, SC=%s, LL=%s, LM=%s, LH=%s, DEV=%s, STS=%s%s", prefix,
     preg(r.error, bufs[0]), preg(r.sector_count, bufs[1]), preg(r.lba_low, bufs[2]),
     preg(r.lba_mid, bufs[3]), preg(r.lba_high, bufs[4]), preg(r.device, bufs[5]),
@@ -459,7 +394,7 @@ static void print_regs(const char * prefix, const ata_out_regs & r, const char *
 static void prettyprint(const unsigned char *p, const char *name){
   pout("\n===== [%s] DATA START (BASE-16) =====\n", name);
   for (int i=0; i<512; i+=16, p+=16)
-#define P(n) (isprint((int)(p[n]))?(int)(p[n]):'.')
+#define P(n) (' ' <= p[n] && p[n] <= '~' ? (int)p[n] : '.')
     // print complete line to avoid slow tty output and extra lines in syslog.
     pout("%03d-%03d: %02x %02x %02x %02x %02x %02x %02x %02x "
                     "%02x %02x %02x %02x %02x %02x %02x %02x"
@@ -611,7 +546,18 @@ int smartcommandhandler(ata_device * device, smart_command_set command, int sele
          in.direction==ata_cmd_in::data_out ? " OUT\n":"\n"));
 
     ata_cmd_out out;
+
+    int64_t start_usec = -1;
+    if (ata_debugmode)
+      start_usec = smi()->get_timer_usec();
+
     bool ok = device->ata_pass_through(in, out);
+
+    if (start_usec >= 0) {
+      int64_t duration_usec = smi()->get_timer_usec() - start_usec;
+      if (duration_usec >= 500)
+        pout(" [Duration: %.3fs]\n", duration_usec / 1000000.0);
+    }
 
     if (ata_debugmode && out.out_regs.is_set())
       print_regs(" Output: ", out.out_regs);
@@ -658,7 +604,7 @@ int smartcommandhandler(ata_device * device, smart_command_set command, int sele
         }
         else {
           // We haven't gotten output that makes sense; print out some debugging info
-          pout("Error SMART Status command failed\n");
+          pout("SMART Status command failed\n");
           pout("Please get assistance from %s\n", PACKAGE_HOMEPAGE);
           pout("Register values returned from SMART Status command are:\n");
           print_regs(" ", out.out_regs);
@@ -838,13 +784,39 @@ int ataCheckPowerMode(ata_device * device) {
   return (int)result;
 }
 
+// Issue a no-data ATA command with optional sector count register value
+bool ata_nodata_command(ata_device * device, unsigned char command,
+                        int sector_count /* = -1 */)
+{
+  ata_cmd_in in;
+  in.in_regs.command = command;
+  if (sector_count >= 0)
+    in.in_regs.sector_count = sector_count;
+
+  return device->ata_pass_through(in);
+}
+
+// Issue SET FEATURES command with optional sector count register value
+bool ata_set_features(ata_device * device, unsigned char features,
+                      int sector_count /* = -1 */)
+{
+  ata_cmd_in in;
+  in.in_regs.command = ATA_SET_FEATURES;
+  in.in_regs.features = features;
+  if (sector_count >= 0)
+    in.in_regs.sector_count = sector_count;
+
+  return device->ata_pass_through(in);
+}
+
 // Reads current Device Identity info (512 bytes) into buf.  Returns 0
 // if all OK.  Returns -1 if no ATA Device identity can be
 // established.  Returns >0 if Device is ATA Packet Device (not SMART
 // capable).  The value of the integer helps identify the type of
 // Packet device, which is useful so that the user can connect the
 // formal device number with whatever object is inside their computer.
-int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_swapped_id)
+int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_swapped_id,
+                      unsigned char * raw_buf /* = 0 */)
 {
   unsigned short *rawshort=(unsigned short *)buf;
   unsigned char  *rawbyte =(unsigned char  *)buf;
@@ -869,6 +841,10 @@ int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_s
     for (i = 0; i < sizeof(buf->model)-1; i += 2)
       swap2((char *)(buf->model+i));
   }
+
+  // If requested, save raw data before endianness adjustments
+  if (raw_buf)
+    memcpy(raw_buf, buf, sizeof(*buf));
 
 #ifndef __NetBSD__
   // if machine is big-endian, swap byte order as needed
@@ -924,68 +900,6 @@ int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_s
   return 0;
 }
 
-// Returns ATA version as an integer, and a pointer to a string
-// describing which revision.  Note that Revision 0 of ATA-3 does NOT
-// support SMART.  For this one case we return -3 rather than +3 as
-// the version number.  See notes above.
-int ataVersionInfo(const char ** description, const ata_identify_device * drive, unsigned short * minor)
-{
-  // get major and minor ATA revision numbers
-  unsigned short major = drive->major_rev_num;
-  *minor=drive->minor_rev_num;
-  
-  // First check if device has ANY ATA version information in it
-  if (major==NOVAL_0 || major==NOVAL_1) {
-    *description=NULL;
-    return 0; // No info found
-  }
-  
-  // The minor revision number has more information - try there first
-  if (*minor && (*minor<=MINOR_MAX)){
-    int std = actual_ver[*minor];
-    if (std) {
-      *description=minor_str[*minor];
-      return std;
-    }
-  }
-
-  // Try new ATA-8 ACS minor revision numbers.
-  // Table 55 of T13/2015-D Revision 4a (ACS-2), December 9, 2010.
-  // (not in actual_ver/minor_str to avoid large sparse tables)
-  const char *desc;
-  switch (*minor) {
-    case 0x0027: desc = "ATA-8-ACS revision 3c"; break;
-    case 0x0028: desc = "ATA-8-ACS revision 6"; break;
-    case 0x0029: desc = "ATA-8-ACS revision 4"; break;
-    case 0x0031: desc = "ACS-2 revision 2"; break;
-    case 0x0033: desc = "ATA-8-ACS revision 3e"; break;
-    case 0x0039: desc = "ATA-8-ACS revision 4c"; break;
-    case 0x0042: desc = "ATA-8-ACS revision 3f"; break;
-    case 0x0052: desc = "ATA-8-ACS revision 3b"; break;
-    case 0x0107: desc = "ATA-8-ACS revision 2d"; break;
-    case 0x0110: desc = "ACS-2 revision 3"; break;
-    default:     desc = 0; break;
-  }
-  if (desc) {
-    *description = desc;
-    return 8;
-  }
-
-  // HDPARM has a very complicated algorithm from here on. Since SMART only
-  // exists on ATA-3 and later standards, let's punt on this.  If you don't
-  // like it, please fix it.  The code's in CVS.
-  int i;
-  for (i=15; i>0; i--)
-    if (major & (0x1<<i))
-      break;
-  
-  *description=NULL; 
-  if (i==0)
-    return 1;
-  else
-    return i;
-}
-
 // Get World Wide Name (WWN) fields.
 // Return NAA field or -1 if WWN is unsupported.
 // Table 34 of T13/1699-D Revision 6a (ATA8-ACS), September 6, 2008.
@@ -1006,6 +920,23 @@ int ata_get_wwn(const ata_identify_device * id, unsigned & oui, uint64_t & uniqu
   unique_id = ((uint64_t)(word109 & 0xf) << 32)
             | (unsigned)((word110 << 16) | word111);
   return (word108 >> 12);
+}
+
+// Get nominal media rotation rate.
+// Returns: 0 = not reported, 1 = SSD, >1 = HDD rpm, < 0 = -(Unknown value)
+int ata_get_rotation_rate(const ata_identify_device * id)
+{
+  // Table 37 of T13/1699-D (ATA8-ACS) Revision 6a, September 6, 2008
+  // Table A.31 of T13/2161-D (ACS-3) Revision 3b, August 25, 2012
+  unsigned short word217 = id->words088_255[217-88];
+  if (word217 == 0x0000 || word217 == 0xffff)
+    return 0;
+  else if (word217 == 0x0001)
+    return 1;
+  else if (word217 > 0x0400)
+    return word217;
+  else
+    return -(int)word217;
 }
 
 // returns 1 if SMART supported, 0 if SMART unsupported, -1 if can't tell
@@ -1043,7 +974,6 @@ int ataIsSmartEnabled(const ata_identify_device * drive)
 int ataReadSmartValues(ata_device * device, struct ata_smart_values *data){
   
   if (smartcommandhandler(device, READ_VALUES, 0, (char *)data)){
-    pout("Error SMART Values Read failed: %s\n", device->get_errmsg());
     return -1;
   }
 
@@ -1057,6 +987,7 @@ int ataReadSmartValues(ata_device * device, struct ata_smart_values *data){
     swap2((char *)&(data->revnumber));
     swap2((char *)&(data->total_time_to_complete_off_line));
     swap2((char *)&(data->smart_capability));
+    swapx(&data->extend_test_completion_time_w);
     for (i=0; i<NUMBER_ATA_SMART_ATTRIBUTES; i++){
       struct ata_smart_attribute *x=data->vendor_attributes+i;
       swap2((char *)&(x->flags));
@@ -1087,12 +1018,11 @@ static void fixsamsungselftestlog(ata_smart_selftestlog * data)
 
 // Reads the Self Test Log (log #6)
 int ataReadSelfTestLog (ata_device * device, ata_smart_selftestlog * data,
-                        unsigned char fix_firmwarebug)
+                        firmwarebug_defs firmwarebugs)
 {
 
   // get data from device
   if (smartcommandhandler(device, READ_LOG, 0x06, (char *)data)){
-    pout("Error SMART Error Self-Test Log Read failed: %s\n", device->get_errmsg());
     return -1;
   }
 
@@ -1101,7 +1031,7 @@ int ataReadSelfTestLog (ata_device * device, ata_smart_selftestlog * data,
     checksumwarning("SMART Self-Test Log Structure");
   
   // fix firmware bugs in self-test log
-  if (fix_firmwarebug == FIX_SAMSUNG)
+  if (firmwarebugs.is_set(BUG_SAMSUNG))
     fixsamsungselftestlog(data);
 
   // swap endian order if needed
@@ -1232,7 +1162,6 @@ int ataReadSelectiveSelfTestLog(ata_device * device, struct ata_selective_self_t
   
   // get data from device
   if (smartcommandhandler(device, READ_LOG, 0x09, (char *)data)){
-    pout("Error SMART Read Selective Self-Test Log failed: %s\n", device->get_errmsg());
     return -1;
   }
    
@@ -1254,9 +1183,6 @@ int ataReadSelectiveSelfTestLog(ata_device * device, struct ata_selective_self_t
     swap2((char *)&(data->pendingtime));
   }
   
-  if (data->logversion != 1)
-    pout("Note: selective self-test log revision number (%d) not 1 implies that no selective self-test has ever been run\n", data->logversion);
-  
   return 0;
 }
 
@@ -1275,6 +1201,7 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
   struct ata_selective_self_test_log sstlog, *data=&sstlog;
   unsigned char *ptr=(unsigned char *)data;
   if (ataReadSelectiveSelfTestLog(device, data)) {
+    pout("SMART Read Selective Self-test Log failed: %s\n", device->get_errmsg());
     pout("Since Read failed, will not attempt to WRITE Selective Self-test Log\n");
     return -1;
   }
@@ -1285,7 +1212,7 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
   // Host is NOT allowed to write selective self-test log if a selective
   // self-test is in progress.
   if (0<data->currentspan && data->currentspan<6 && ((sv->self_test_exec_status)>>4)==15) {
-    pout("Error SMART Selective or other Self-Test in progress.\n");
+    pout("SMART Selective or other Self-test in progress\n");
     return -4;
   }
 
@@ -1430,7 +1357,7 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
 
   // write new selective self-test log
   if (smartcommandhandler(device, WRITE_LOG, 0x09, (char *)data)){
-    pout("Error Write Selective Self-Test Log failed: %s\n", device->get_errmsg());
+    pout("Write Selective Self-test Log failed: %s\n", device->get_errmsg());
     return -3;
   }
 
@@ -1472,12 +1399,11 @@ static void fixsamsungerrorlog2(ata_smart_errorlog * data)
 // Error Log is #2, and the Extended Comprehensive SMART Error log is
 // #3
 int ataReadErrorLog (ata_device * device, ata_smart_errorlog *data,
-                     unsigned char fix_firmwarebug)
+                     firmwarebug_defs firmwarebugs)
 {
   
   // get data from device
   if (smartcommandhandler(device, READ_LOG, 0x01, (char *)data)){
-    pout("Error SMART Error Log Read failed: %s\n", device->get_errmsg());
     return -1;
   }
   
@@ -1487,9 +1413,9 @@ int ataReadErrorLog (ata_device * device, ata_smart_errorlog *data,
   
   // Some disks have the byte order reversed in some SMART Summary
   // Error log entries
-  if (fix_firmwarebug == FIX_SAMSUNG)
+  if (firmwarebugs.is_set(BUG_SAMSUNG))
     fixsamsungerrorlog(data);
-  else if (fix_firmwarebug == FIX_SAMSUNG2)
+  else if (firmwarebugs.is_set(BUG_SAMSUNG2))
     fixsamsungerrorlog2(data);
 
   // swap endian order if needed
@@ -1513,9 +1439,34 @@ int ataReadErrorLog (ata_device * device, ata_smart_errorlog *data,
   return 0;
 }
 
+
+// Fix LBA byte ordering of Extended Comprehensive Error Log
+// if little endian instead of ATA register ordering is provided
+template <class T>
+static inline void fix_exterrlog_lba_cmd(T & cmd)
+{
+  T org = cmd;
+  cmd.lba_mid_register_hi = org.lba_high_register;
+  cmd.lba_low_register_hi = org.lba_mid_register_hi;
+  cmd.lba_high_register   = org.lba_mid_register;
+  cmd.lba_mid_register    = org.lba_low_register_hi;
+}
+
+static void fix_exterrlog_lba(ata_smart_exterrlog * log, unsigned nsectors)
+{
+   for (unsigned i = 0; i < nsectors; i++) {
+     for (int ei = 0; ei < 4; ei++) {
+       ata_smart_exterrlog_error_log & entry = log[i].error_logs[ei];
+       fix_exterrlog_lba_cmd(entry.error);
+       for (int ci = 0; ci < 5; ci++)
+         fix_exterrlog_lba_cmd(entry.commands[ci]);
+     }
+   }
+}
+
 // Read Extended Comprehensive Error Log
 bool ataReadExtErrorLog(ata_device * device, ata_smart_exterrlog * log,
-                        unsigned nsectors)
+                        unsigned nsectors, firmwarebug_defs firmwarebugs)
 {
   if (!ataReadLogExt(device, 0x03, 0x00, 0, log, nsectors))
     return false;
@@ -1533,6 +1484,9 @@ bool ataReadExtErrorLog(ata_device * device, ata_smart_exterrlog * log,
     }
   }
 
+  if (firmwarebugs.is_set(BUG_XERRORLBA))
+    fix_exterrlog_lba(log, nsectors);
+
   return true;
 }
 
@@ -1541,7 +1495,6 @@ int ataReadSmartThresholds (ata_device * device, struct ata_smart_thresholds_pvt
   
   // get data from device
   if (smartcommandhandler(device, READ_THRESHOLDS, 0, (char *)data)){
-    pout("Error SMART Thresholds Read failed: %s\n", device->get_errmsg());
     return -1;
   }
   
@@ -1558,7 +1511,6 @@ int ataReadSmartThresholds (ata_device * device, struct ata_smart_thresholds_pvt
 
 int ataEnableSmart (ata_device * device ){
   if (smartcommandhandler(device, ENABLE, 0, NULL)){
-    pout("Error SMART Enable failed: %s\n", device->get_errmsg());
     return -1;
   }
   return 0;
@@ -1567,7 +1519,6 @@ int ataEnableSmart (ata_device * device ){
 int ataDisableSmart (ata_device * device ){
   
   if (smartcommandhandler(device, DISABLE, 0, NULL)){
-    pout("Error SMART Disable failed: %s\n", device->get_errmsg());
     return -1;
   }  
   return 0;
@@ -1575,7 +1526,6 @@ int ataDisableSmart (ata_device * device ){
 
 int ataEnableAutoSave(ata_device * device){
   if (smartcommandhandler(device, AUTOSAVE, 241, NULL)){
-    pout("Error SMART Enable Auto-save failed: %s\n", device->get_errmsg());
     return -1;
   }
   return 0;
@@ -1584,7 +1534,6 @@ int ataEnableAutoSave(ata_device * device){
 int ataDisableAutoSave(ata_device * device){
   
   if (smartcommandhandler(device, AUTOSAVE, 0, NULL)){
-    pout("Error SMART Disable Auto-save failed: %s\n", device->get_errmsg());
     return -1;
   }
   return 0;
@@ -1598,7 +1547,6 @@ int ataEnableAutoOffline (ata_device * device){
   
   /* timer hard coded to 4 hours */  
   if (smartcommandhandler(device, AUTO_OFFLINE, 248, NULL)){
-    pout("Error SMART Enable Automatic Offline failed: %s\n", device->get_errmsg());
     return -1;
   }
   return 0;
@@ -1609,7 +1557,6 @@ int ataEnableAutoOffline (ata_device * device){
 int ataDisableAutoOffline (ata_device * device){
   
   if (smartcommandhandler(device, AUTO_OFFLINE, 0, NULL)){
-    pout("Error SMART Disable Automatic Offline failed: %s\n", device->get_errmsg());
     return -1;
   }
   return 0;
@@ -1637,7 +1584,8 @@ int ataSmartStatus2(ata_device * device){
 // This is the way to execute ALL tests: offline, short self-test,
 // extended self test, with and without captive mode, etc.
 // TODO: Move to ataprint.cpp ?
-int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest_args & selargs,
+int ataSmartTest(ata_device * device, int testtype, bool force,
+                 const ata_selective_selftest_args & selargs,
                  const ata_smart_values * sv, uint64_t num_sectors)
 {
   char cmdmsg[128]; const char *type, *captive;
@@ -1664,7 +1612,20 @@ int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest
     type="Selective self-test";
   else
     type = 0;
-  
+
+  // Check whether another test is already running
+  if (type && (sv->self_test_exec_status >> 4) == 0xf) {
+    if (!force) {
+      pout("Can't start self-test without aborting current test (%d0%% remaining),\n"
+           "%srun 'smartctl -X' to abort test.\n",
+           sv->self_test_exec_status & 0x0f,
+           (!select ? "add '-t force' option to override, or " : ""));
+      return -1;
+    }
+  }
+  else
+    force = false;
+
   // If doing a selective self-test, first use WRITE_LOG to write the
   // selective self-test log.
   ata_selective_selftest_args selargs_io = selargs; // filled with info about actual spans
@@ -1676,11 +1637,11 @@ int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest
 
   //  Print ouf message that we are sending the command to test
   if (testtype==ABORT_SELF_TEST)
-    sprintf(cmdmsg,"Abort SMART off-line mode self-test routine");
+    snprintf(cmdmsg, sizeof(cmdmsg), "Abort SMART off-line mode self-test routine");
   else if (!type)
-    sprintf(cmdmsg, "SMART EXECUTE OFF-LINE IMMEDIATE subcommand 0x%02x", testtype);
+    snprintf(cmdmsg, sizeof(cmdmsg), "SMART EXECUTE OFF-LINE IMMEDIATE subcommand 0x%02x", testtype);
   else
-    sprintf(cmdmsg,"Execute SMART %s routine immediately in %s mode",type,captive);
+    snprintf(cmdmsg, sizeof(cmdmsg), "Execute SMART %s routine immediately in %s mode", type, captive);
   pout("Sending command: \"%s\".\n",cmdmsg);
 
   if (select) {
@@ -1706,7 +1667,7 @@ int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest
   else {
     pout("Drive command \"%s\" successful.\n", cmdmsg);
     if (type)
-      pout("Testing has begun.\n");
+      pout("Testing has begun%s.\n", (force ? " (previous test aborted)" : ""));
   }
   return 0;
 }
@@ -1722,7 +1683,12 @@ int TestTime(const ata_smart_values *data, int testtype)
     return (int) data->short_test_completion_time;
   case EXTEND_SELF_TEST:
   case EXTEND_CAPTIVE_SELF_TEST:
-    return (int) data->extend_test_completion_time;
+    if (data->extend_test_completion_time_b == 0xff
+        && data->extend_test_completion_time_w != 0x0000
+        && data->extend_test_completion_time_w != 0xffff)
+      return data->extend_test_completion_time_w; // ATA-8
+    else
+      return data->extend_test_completion_time_b;
   case CONVEYANCE_SELF_TEST:
   case CONVEYANCE_CAPTIVE_SELF_TEST:
     return (int) data->conveyance_test_completion_time;
@@ -1903,6 +1869,9 @@ static ata_attr_raw_format get_default_raw_format(unsigned char id)
   case 196: // Reallocated event count
     return RAWFMT_RAW16_OPT_RAW16;
 
+  case 9:  // Power on hours
+    return RAWFMT_RAW24_OPT_RAW8;
+
   case 190: // Temperature
   case 194:
     return RAWFMT_TEMPMINMAX;
@@ -1925,6 +1894,8 @@ uint64_t ata_get_attr_raw_value(const ata_smart_attribute & attr,
       case RAWFMT_RAW64:
       case RAWFMT_HEX64:
         byteorder = "543210wv"; break;
+      case RAWFMT_RAW56:
+      case RAWFMT_HEX56:
       case RAWFMT_RAW24_DIV_RAW32:
       case RAWFMT_MSEC24_HOUR32:
         byteorder = "r543210"; break;
@@ -1994,12 +1965,17 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
     break;
 
   case RAWFMT_RAW48:
+  case RAWFMT_RAW56:
   case RAWFMT_RAW64:
     s = strprintf("%"PRIu64, rawvalue);
     break;
 
   case RAWFMT_HEX48:
     s = strprintf("0x%012"PRIx64, rawvalue);
+    break;
+
+  case RAWFMT_HEX56:
+    s = strprintf("0x%014"PRIx64, rawvalue);
     break;
 
   case RAWFMT_HEX64:
@@ -2009,13 +1985,19 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
   case RAWFMT_RAW16_OPT_RAW16:
     s = strprintf("%u", word[0]);
     if (word[1] || word[2])
-      s += strprintf(" (%u, %u)", word[2], word[1]);
+      s += strprintf(" (%u %u)", word[2], word[1]);
     break;
 
   case RAWFMT_RAW16_OPT_AVG16:
     s = strprintf("%u", word[0]);
     if (word[1])
       s += strprintf(" (Average %u)", word[1]);
+    break;
+
+  case RAWFMT_RAW24_OPT_RAW8:
+    s = strprintf("%u", (unsigned)(rawvalue & 0x00ffffffULL));
+    if (raw[3] || raw[4] || raw[5])
+      s += strprintf(" (%d %d %d)", raw[5], raw[4], raw[3]);
     break;
 
   case RAWFMT_RAW24_DIV_RAW24:
@@ -2072,24 +2054,36 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
 
   case RAWFMT_TEMPMINMAX:
     // Temperature
-    s = strprintf("%u", word[0]);
-    if (word[1] || word[2]) {
-      unsigned lo = ~0, hi = ~0;
-      if (!raw[3]) {
-        // 00 HH 00 LL 00 TT (IBM)
-        hi = word[2]; lo = word[1];
+    {
+      // Search for possible min/max values
+      // 00 HH 00 LL 00 TT (Hitachi/IBM)
+      // 00 00 HH LL 00 TT (Maxtor, Samsung)
+      // 00 00 00 HH LL TT (WDC)
+      unsigned char lo = 0, hi = 0;
+      int cnt = 0;
+      for (int i = 1; i < 6; i++) {
+        if (raw[i])
+          switch (cnt++) {
+            case 0:
+              lo = raw[i];
+              break;
+            case 1:
+              if (raw[i] < lo) {
+                hi = lo; lo = raw[i];
+              }
+              else
+                hi = raw[i];
+              break;
+          }
       }
-      else if (!word[2]) {
-        // 00 00 HH LL 00 TT (Maxtor)
-        hi = raw[3]; lo = raw[2];
-      }
-      if (lo > hi) {
-        unsigned t = lo; lo = hi; hi = t;
-      }
-      if (lo <= word[0] && word[0] <= hi)
-        s += strprintf(" (Min/Max %u/%u)", lo, hi);
+
+      unsigned char t = raw[0];
+      if (cnt == 0)
+        s = strprintf("%d", t);
+      else if (cnt == 2 && 0 < lo && lo <= t && t <= hi && hi < 128)
+        s = strprintf("%d (Min/Max %d/%d)", t, lo, hi);
       else
-        s += strprintf(" (%d %d %d %d)", raw[5], raw[4], raw[3], raw[2]);
+        s = strprintf("%d (%d %d %d %d %d)", t, raw[5], raw[4], raw[3], raw[2], raw[1]);
     }
     break;
 
@@ -2108,8 +2102,13 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
 
 // Attribute names shouldn't be longer than 23 chars, otherwise they break the
 // output of smartctl.
-static const char * get_default_attr_name(unsigned char id)
+static const char * get_default_attr_name(unsigned char id, int rpm)
 {
+  bool hdd = (rpm > 1), ssd = (rpm == 1);
+
+  static const char Unknown_HDD_Attribute[] = "Unknown_HDD_Attribute";
+  static const char Unknown_SSD_Attribute[] = "Unknown_SSD_Attribute";
+
   switch (id) {
   case 1:
     return "Raw_Read_Error_Rate";
@@ -2122,36 +2121,48 @@ static const char * get_default_attr_name(unsigned char id)
   case 5:
     return "Reallocated_Sector_Ct";
   case 6:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Read_Channel_Margin";
   case 7:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Seek_Error_Rate";
   case 8:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Seek_Time_Performance";
   case 9:
     return "Power_On_Hours";
   case 10:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Spin_Retry_Count";
   case 11:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Calibration_Retry_Count";
   case 12:
     return "Power_Cycle_Count";
   case 13:
     return "Read_Soft_Error_Rate";
   case 175:
+    if (hdd) return Unknown_HDD_Attribute;
     return "Program_Fail_Count_Chip";
   case 176:
+    if (hdd) return Unknown_HDD_Attribute;
     return "Erase_Fail_Count_Chip";
   case 177:
+    if (hdd) return Unknown_HDD_Attribute;
     return "Wear_Leveling_Count";
   case 178:
+    if (hdd) return Unknown_HDD_Attribute;
     return "Used_Rsvd_Blk_Cnt_Chip";
   case 179:
+    if (hdd) return Unknown_HDD_Attribute;
     return "Used_Rsvd_Blk_Cnt_Tot";
   case 180:
+    if (hdd) return Unknown_HDD_Attribute;
     return "Unused_Rsvd_Blk_Cnt_Tot";
   case 181:
     return "Program_Fail_Cnt_Total";
   case 182:
+    if (hdd) return Unknown_HDD_Attribute;
     return "Erase_Fail_Count_Total";
   case 183:
     return "Runtime_Bad_Block";
@@ -2162,6 +2173,7 @@ static const char * get_default_attr_name(unsigned char id)
   case 188:
     return "Command_Timeout";
   case 189:
+    if (ssd) return Unknown_SSD_Attribute;
     return "High_Fly_Writes";
   case 190:
     // Western Digital uses this for temperature.
@@ -2173,10 +2185,12 @@ static const char * get_default_attr_name(unsigned char id)
     // 55C sometime in the past.
     return "Airflow_Temperature_Cel";
   case 191:
+    if (ssd) return Unknown_SSD_Attribute;
     return "G-Sense_Error_Rate";
   case 192:
     return "Power-Off_Retract_Count";
   case 193:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Load_Cycle_Count";
   case 194:
     return "Temperature_Celsius";
@@ -2192,11 +2206,14 @@ static const char * get_default_attr_name(unsigned char id)
   case 199:
     return "UDMA_CRC_Error_Count";
   case 200:
+    if (ssd) return Unknown_SSD_Attribute;
     // Western Digital
     return "Multi_Zone_Error_Rate";
   case 201:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Soft_Read_Error_Rate";
   case 202:
+    if (ssd) return Unknown_SSD_Attribute;
     // Fujitsu: "TA_Increase_Count"
     return "Data_Address_Mark_Errs";
   case 203:
@@ -2211,36 +2228,49 @@ static const char * get_default_attr_name(unsigned char id)
     return "Thermal_Asperity_Rate";
   case 206:
     // Fujitsu
+    if (ssd) return Unknown_SSD_Attribute;
     return "Flying_Height";
   case 207:
     // Maxtor
+    if (ssd) return Unknown_SSD_Attribute;
     return "Spin_High_Current";
   case 208:
     // Maxtor
+    if (ssd) return Unknown_SSD_Attribute;
     return "Spin_Buzz";
   case 209:
     // Maxtor
+    if (ssd) return Unknown_SSD_Attribute;
     return "Offline_Seek_Performnce";
   case 220:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Disk_Shift";
   case 221:
+    if (ssd) return Unknown_SSD_Attribute;
     return "G-Sense_Error_Rate";
   case 222:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Loaded_Hours";
   case 223:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Load_Retry_Count";
   case 224:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Load_Friction";
   case 225:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Load_Cycle_Count";
   case 226:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Load-in_Time";
   case 227:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Torq-amp_Count";
   case 228:
     return "Power-off_Retract_Count";
   case 230:
     // seen in IBM DTPA-353750
+    if (ssd) return Unknown_SSD_Attribute;
     return "Head_Amplitude";
   case 231:
     return "Temperature_Celsius";
@@ -2249,8 +2279,10 @@ static const char * get_default_attr_name(unsigned char id)
     return "Available_Reservd_Space";
   case 233:
     // seen in Intel X25-E SSD
+    if (hdd) return Unknown_HDD_Attribute;
     return "Media_Wearout_Indicator";
   case 240:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Head_Flying_Hours";
   case 241:
     return "Total_LBAs_Written";
@@ -2259,6 +2291,7 @@ static const char * get_default_attr_name(unsigned char id)
   case 250:
     return "Read_Error_Retry_Rate";
   case 254:
+    if (ssd) return Unknown_SSD_Attribute;
     return "Free_Fall_Sensor";
   default:
     return "Unknown_Attribute";
@@ -2266,12 +2299,13 @@ static const char * get_default_attr_name(unsigned char id)
 }
 
 // Get attribute name
-std::string ata_get_smart_attr_name(unsigned char id, const ata_vendor_attr_defs & defs)
+std::string ata_get_smart_attr_name(unsigned char id, const ata_vendor_attr_defs & defs,
+                                    int rpm /* = 0 */)
 {
   if (!defs[id].name.empty())
     return defs[id].name;
   else
-    return get_default_attr_name(id);
+    return get_default_attr_name(id, rpm);
 }
 
 // Find attribute index for attribute id, -1 if not found.
@@ -2290,21 +2324,24 @@ int ata_find_attr_index(unsigned char id, const ata_smart_values & smartval)
 // non-default interpretations. If the Attribute does not exist, return 0
 unsigned char ata_return_temperature_value(const ata_smart_values * data, const ata_vendor_attr_defs & defs)
 {
-  for (int i = 0; i < 3; i++) {
-    static const unsigned char ids[3] = {194, 9, 220};
+  for (int i = 0; i < 4; i++) {
+    static const unsigned char ids[4] = {194, 190, 9, 220};
     unsigned char id = ids[i];
     const ata_attr_raw_format format = defs[id].raw_format;
-    if (!(   (id == 194 && format == RAWFMT_DEFAULT)
+    if (!(   ((id == 194 || id == 190) && format == RAWFMT_DEFAULT)
           || format == RAWFMT_TEMPMINMAX || format == RAWFMT_TEMP10X))
       continue;
     int idx = ata_find_attr_index(id, *data);
     if (idx < 0)
       continue;
     uint64_t raw = ata_get_attr_raw_value(data->vendor_attributes[idx], defs);
-    unsigned temp = (unsigned short)raw; // ignore possible min/max values in high words
+    unsigned temp;
+    // ignore possible min/max values in high words
     if (format == RAWFMT_TEMP10X) // -v N,temp10x
-      temp = (temp+5) / 10;
-    if (!(0 < temp && temp <= 255))
+      temp = ((unsigned short)raw + 5) / 10;
+    else
+      temp = (unsigned char)raw;
+    if (!(0 < temp && temp < 128))
       continue;
     return temp;
   }
@@ -2319,7 +2356,7 @@ int ataReadSCTStatus(ata_device * device, ata_sct_status_response * sts)
   // read SCT status via SMART log 0xe0
   memset(sts, 0, sizeof(*sts));
   if (smartcommandhandler(device, READ_LOG, 0xe0, (char *)sts)){
-    pout("Error Read SCT Status failed: %s\n", device->get_errmsg());
+    pout("Read SCT Status failed: %s\n", device->get_errmsg());
     return -1;
   }
 
@@ -2337,7 +2374,7 @@ int ataReadSCTStatus(ata_device * device, ata_sct_status_response * sts)
 
   // Check format version
   if (!(sts->format_version == 2 || sts->format_version == 3)) {
-    pout("Error unknown SCT Status format version %u, should be 2 or 3.\n", sts->format_version);
+    pout("Unknown SCT Status format version %u, should be 2 or 3.\n", sts->format_version);
     return -1;
   }
   return 0;
@@ -2374,14 +2411,14 @@ int ataReadSCTTempHist(ata_device * device, ata_sct_temperature_history_table * 
 
   // write command via SMART log page 0xe0
   if (smartcommandhandler(device, WRITE_LOG, 0xe0, (char *)&cmd)){
-    pout("Error Write SCT Data Table command failed: %s\n", device->get_errmsg());
+    pout("Write SCT Data Table failed: %s\n", device->get_errmsg());
     return -1;
   }
 
   // read SCT data via SMART log page 0xe1
   memset(tmh, 0, sizeof(*tmh));
   if (smartcommandhandler(device, READ_LOG, 0xe1, (char *)tmh)){
-    pout("Error Read SCT Data Table failed: %s\n", device->get_errmsg());
+    pout("Read SCT Data Table failed: %s\n", device->get_errmsg());
     return -1;
   }
 
@@ -2390,7 +2427,7 @@ int ataReadSCTTempHist(ata_device * device, ata_sct_temperature_history_table * 
     return -1;
 
   if (!(sts->ext_status_code == 0 && sts->action_code == 5 && sts->function_code == 1)) {
-    pout("Error unexpected SCT status 0x%04x (action_code=%u, function_code=%u)\n",
+    pout("Unexpected SCT status 0x%04x (action_code=%u, function_code=%u)\n",
       sts->ext_status_code, sts->action_code, sts->function_code);
     return -1;
   }
@@ -2400,15 +2437,78 @@ int ataReadSCTTempHist(ata_device * device, ata_sct_temperature_history_table * 
     swapx(&tmh->format_version);
     swapx(&tmh->sampling_period);
     swapx(&tmh->interval);
-  }
-
-  // Check format version
-  if (tmh->format_version != 2) {
-    pout("Error unknown SCT Temperature History Format Version (%u), should be 2.\n", tmh->format_version);
-    return -1;
+    swapx(&tmh->cb_index);
+    swapx(&tmh->cb_size);
   }
   return 0;
 }
+
+// Get/Set Write Cache Reordering
+int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool persistent, bool set)
+{
+  // Check initial status
+  ata_sct_status_response sts;
+  if (ataReadSCTStatus(device, &sts))
+    return -1;
+
+  // Do nothing if other SCT command is executing
+  if (sts.ext_status_code == 0xffff) {
+    pout("Another SCT command is executing, abort Feature Control\n"
+         "(SCT ext_status_code 0x%04x, action_code=%u, function_code=%u)\n",
+      sts.ext_status_code, sts.action_code, sts.function_code);
+    return -1;
+  }
+
+  ata_sct_feature_control_command cmd; memset(&cmd, 0, sizeof(cmd));
+  // CAUTION: DO NOT CHANGE THIS VALUE (SOME ACTION CODES MAY ERASE DISK)
+  cmd.action_code   = 4; // Feature Control command
+  cmd.function_code  = (set ? 1 : 2); // 1=Set, 2=Get
+  cmd.feature_code  = 2; //  Enable/Disable Write Cache Reordering 
+  cmd.state         = (enable ? 1 : 2); // 1 enable, 2 disable
+  cmd.option_flags  = (persistent ? 0x01 : 0x00);
+
+  // swap endian order if needed
+  if (isbigendian()) {
+    swapx(&cmd.action_code);
+    swapx(&cmd.function_code);
+    swapx(&cmd.feature_code);
+    swapx(&cmd.state);
+    swapx(&cmd.option_flags);
+  }
+
+  // write command via SMART log page 0xe0
+  // TODO: Debug output
+  ata_cmd_in in;
+  in.in_regs.command = ATA_SMART_CMD;
+  in.in_regs.lba_high = SMART_CYL_HI; in.in_regs.lba_mid = SMART_CYL_LOW;
+  in.in_regs.features = ATA_SMART_WRITE_LOG_SECTOR;
+  in.in_regs.lba_low = 0xe0;
+  in.set_data_out(&cmd, 1);
+
+  if (!set)
+    // Time limit returned in ATA registers
+    in.out_needed.sector_count = in.out_needed.lba_low = true;
+
+  ata_cmd_out out;
+  if (!device->ata_pass_through(in, out)) {
+    pout("Write SCT (%cet) XXX Error Recovery Control Command failed: %s\n",
+      (!set ? 'G' : 'S'), device->get_errmsg());
+    return -1;
+  }
+  int state = out.out_regs.sector_count | (out.out_regs.lba_low << 8);
+
+  // re-read and check SCT status
+  if (ataReadSCTStatus(device, &sts))
+    return -1;
+
+  if (!(sts.ext_status_code == 0 && sts.action_code == 4 && sts.function_code == (set ? 1 : 2))) {
+    pout("Unexpected SCT status 0x%04x (action_code=%u, function_code=%u)\n",
+      sts.ext_status_code, sts.action_code, sts.function_code);
+    return -1;
+  }
+  return state;
+}
+
 
 // Set SCT Temperature Logging Interval
 int ataSetSCTTempInterval(ata_device * device, unsigned interval, bool persistent)
@@ -2445,7 +2545,7 @@ int ataSetSCTTempInterval(ata_device * device, unsigned interval, bool persisten
 
   // write command via SMART log page 0xe0
   if (smartcommandhandler(device, WRITE_LOG, 0xe0, (char *)&cmd)){
-    pout("Error Write SCT Feature Control Command failed: %s\n", device->get_errmsg());
+    pout("Write SCT Feature Control Command failed: %s\n", device->get_errmsg());
     return -1;
   }
 
@@ -2454,7 +2554,7 @@ int ataSetSCTTempInterval(ata_device * device, unsigned interval, bool persisten
     return -1;
 
   if (!(sts.ext_status_code == 0 && sts.action_code == 4 && sts.function_code == 1)) {
-    pout("Error unexcepted SCT status 0x%04x (action_code=%u, function_code=%u)\n",
+    pout("Unexpected SCT status 0x%04x (action_code=%u, function_code=%u)\n",
       sts.ext_status_code, sts.action_code, sts.function_code);
     return -1;
   }
@@ -2509,7 +2609,7 @@ static int ataGetSetSCTErrorRecoveryControltime(ata_device * device, unsigned ty
 
   ata_cmd_out out;
   if (!device->ata_pass_through(in, out)) {
-    pout("Error Write SCT (%cet) Error Recovery Control Command failed: %s\n",
+    pout("Write SCT (%cet) Error Recovery Control Command failed: %s\n",
       (!set ? 'G' : 'S'), device->get_errmsg());
     return -1;
   }
@@ -2519,7 +2619,7 @@ static int ataGetSetSCTErrorRecoveryControltime(ata_device * device, unsigned ty
     return -1;
 
   if (!(sts.ext_status_code == 0 && sts.action_code == 3 && sts.function_code == (set ? 1 : 2))) {
-    pout("Error unexcepted SCT status 0x%04x (action_code=%u, function_code=%u)\n",
+    pout("Unexpected SCT status 0x%04x (action_code=%u, function_code=%u)\n",
       sts.ext_status_code, sts.action_code, sts.function_code);
     return -1;
   }
@@ -2529,9 +2629,16 @@ static int ataGetSetSCTErrorRecoveryControltime(ata_device * device, unsigned ty
     if (!(out.out_regs.sector_count.is_set() && out.out_regs.lba_low.is_set())) {
       // TODO: Output register support should be checked within each ata_pass_through()
       // implementation before command is issued.
-      pout("Error SMART WRITE LOG does not return COUNT and LBA_LOW register\n");
+      pout("SMART WRITE LOG does not return COUNT and LBA_LOW register\n");
       return -1;
     }
+    if (   out.out_regs.sector_count == in.in_regs.sector_count
+        && out.out_regs.lba_low      == in.in_regs.lba_low     ) {
+      // 0xe001 (5734.5s) - this is most likely a broken ATA pass-through implementation
+      pout("SMART WRITE LOG returns COUNT and LBA_LOW register unchanged\n");
+      return -1;
+    }
+
     // Return value to caller
     time_limit = out.out_regs.sector_count | (out.out_regs.lba_low << 8);
   }
@@ -2623,8 +2730,9 @@ int ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
   char msglba[32];
   if (retval < 0 && failing_lba < 0xffffffffffffULL)
     snprintf(msglba, sizeof(msglba), "%"PRIu64, failing_lba);
-  else
-    strcpy(msglba, "-");
+  else {
+    msglba[0] = '-'; msglba[1] = 0;
+  }
 
   pout("#%2u  %-19s %-29s %1d0%%  %8u         %s\n", testnum,
        msgtest.c_str(), msgstat.c_str(), test_status & 0x0f, timestamp, msglba);
@@ -2637,11 +2745,11 @@ int ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
 // bottom 8 bits: number of entries found where self-test showed an error
 // remaining bits: if nonzero, power on hours of last self-test where error was found
 int ataPrintSmartSelfTestlog(const ata_smart_selftestlog * data, bool allentries,
-                             unsigned char fix_firmwarebug)
+                             firmwarebug_defs firmwarebugs)
 {
   if (allentries)
     pout("SMART Self-test log structure revision number %d\n",(int)data->revnumber);
-  if ((data->revnumber!=0x0001) && allentries && fix_firmwarebug != FIX_SAMSUNG)
+  if (data->revnumber != 0x0001 && allentries && !firmwarebugs.is_set(BUG_SAMSUNG))
     pout("Warning: ATA Specification requires self-test log structure revision number = 1\n");
   if (data->mostrecenttest==0){
     if (allentries)

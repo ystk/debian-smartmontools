@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2004-8 Christian Franke
+ * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2004-11 Christian Franke
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -12,15 +12,15 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
 
 #ifndef INT64_H_
 #define INT64_H_
 
-#define INT64_H_CVSID "$Id: int64.h,v 1.17 2008/03/04 22:09:47 ballen4705 Exp $\n"
+#define INT64_H_CVSID "$Id: int64.h 3727 2012-12-13 17:23:06Z samm2 $"
 
 // 64 bit integer typedefs and format strings
 
@@ -40,7 +40,7 @@
 #include <sys/int_types.h>
 #else
 #if defined(_WIN32) && defined(_MSC_VER)
-// for MSVC 6.0
+// for MSVC <= 9 (MSVC10 and MinGW provide <stdint.h>)
 typedef          __int64    int64_t;
 typedef unsigned __int64   uint64_t;
 #else
@@ -59,12 +59,12 @@ typedef unsigned long long uint64_t;
 #endif // HAVE_STDINT_H
 #endif // HAVE_INTTYPES_H
 
-#ifdef _WIN32
-// for MSVCRT.DLL (used by both MSVC 6.0 and MinGW)
+#if defined(_WIN32) && !defined(PRId64)
+// for MSVC (MinGW provides <inttypes.h>)
 #define PRId64 "I64d"
 #define PRIu64 "I64u"
 #define PRIx64 "I64x"
-#endif // _WIN32
+#endif // _WIN32 && !PRId64
 
 // If macros not defined in inttypes.h, fix here.  Default is GCC
 // style
@@ -79,17 +79,5 @@ typedef unsigned long long uint64_t;
 #ifndef PRIx64
 #define PRIx64 "llx"
 #endif // ndef PRIx64
-
-
-#if defined(_WIN32) && defined(_MSC_VER)
-// for MSVC 6.0: "unsigned __int64 -> double" conversion not implemented (why?-)
-__inline double uint64_to_double(uint64_t ull) {
-  return ((int64_t)ull >= 0 ? (double)(int64_t)ull :
-    ((double)(int64_t)(ull - 9223372036854775808UI64)) + 9223372036854775808.0);
-}
-#else
-#define uint64_to_double(ull) ((double)(ull))
-#endif // _WIN32 && _MSC_VER
-
 
 #endif // INT64_H

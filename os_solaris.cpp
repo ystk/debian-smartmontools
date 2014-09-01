@@ -12,8 +12,8 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
 
@@ -39,9 +39,9 @@
 
 extern long long bytes;
 
-static const char *filenameandversion="$Id: os_solaris.cpp,v 1.32 2008/06/12 21:46:31 ballen4705 Exp $";
+static const char *filenameandversion="$Id: os_solaris.cpp 3806 2013-03-29 20:17:03Z chrfranke $";
 
-const char *os_XXXX_c_cvsid="$Id: os_solaris.cpp,v 1.32 2008/06/12 21:46:31 ballen4705 Exp $" \
+const char *os_XXXX_c_cvsid="$Id: os_solaris.cpp 3806 2013-03-29 20:17:03Z chrfranke $" \
 ATACMDS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_SOLARIS_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 // The printwarning() function warns about unimplemented functions
@@ -285,17 +285,6 @@ static void swap_sector(void *p)
 #endif
 
 // Interface to ATA devices.  See os_linux.c
-int marvell_command_interface(int fd, smart_command_set command, int select, char *data){
-    ARGUSED(fd); ARGUSED(command); ARGUSED(select); ARGUSED(data);
-    return -1;
-}
-
-int highpoint_command_interface(int fd, smart_command_set command, int select, char *data)
-{
-    ARGUSED(fd); ARGUSED(command); ARGUSED(select); ARGUSED(data);
-    return -1;
-}
-
 int ata_command_interface(int fd, smart_command_set command, int select, char *data){
 #if defined(__sparc)
     int err;
@@ -350,25 +339,6 @@ int ata_command_interface(int fd, smart_command_set command, int select, char *d
 	return -1;
 #endif
     return -1;
-}
-
-// Interface to ATA devices behind 3ware escalade RAID controller cards.  See os_linux.c
-int escalade_command_interface(int fd, int disknum, int escalade_type, smart_command_set command, int select, char *data){
-  ARGUSED(fd);  ARGUSED(disknum);  ARGUSED(escalade_type);
-  ARGUSED(command);  ARGUSED(select);  ARGUSED(data); 
-
-  if (printwarning(1))
-    return -1;
-  return -1;
-}
-
-int areca_command_interface(int fd, int disknum, smart_command_set command, int select, char *data){
-  ARGUSED(fd);  ARGUSED(disknum);
-  ARGUSED(command);  ARGUSED(select);  ARGUSED(data); 
-
-  if (printwarning(1))
-    return -1;
-  return -1;
 }
 
 #include <errno.h>
@@ -445,13 +415,18 @@ int do_scsi_cmnd_io(int fd, struct scsi_cmnd_io * iop, int report)
 
     if ((SCSI_STATUS_CHECK_CONDITION == iop->scsi_status) &&
         iop->sensep && (len > 3)) {
-      pout("  status=0x%x: sense_key=0x%x asc=0x%x ascq=0x%x\n", 
-           iop->scsi_status, iop->sensep[2] & 0xf,
-           iop->sensep[12], iop->sensep[13]);
+      if ((iop->sensep[0] & 0x7f) > 0x71)
+        pout("  status=%x: [desc] sense_key=%x asc=%x ascq=%x\n",
+             iop->scsi_status, iop->sensep[1] & 0xf,
+             iop->sensep[2], iop->sensep[3]);
+      else
+        pout("  status=%x: sense_key=%x asc=%x ascq=%x\n",
+             iop->scsi_status, iop->sensep[2] & 0xf,
+             iop->sensep[12], iop->sensep[13]);
       if (report > 1) {
           pout("  >>> Sense buffer, len=%d:\n", len);
           dStrHex((const char *)iop->sensep, ((len > 252) ? 252 : len) , 1);
-        }
+      }
     } else if (iop->scsi_status)
       pout("  status=%x\n", iop->scsi_status);
     if (iop->resid)

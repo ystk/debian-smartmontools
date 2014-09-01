@@ -13,8 +13,8 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
 
@@ -27,7 +27,7 @@
 
 #include <errno.h>
 
-const char * os_openbsd_cpp_cvsid = "$Id: os_openbsd.cpp 3265 2011-02-21 16:21:14Z chrfranke $"
+const char * os_openbsd_cpp_cvsid = "$Id: os_openbsd.cpp 3727 2012-12-13 17:23:06Z samm2 $"
   OS_OPENBSD_H_CVSID;
 
 /* global variable holding byte count of allocated memory */
@@ -172,14 +172,6 @@ deviceclose(int fd)
 {
   return close(fd);
 }
-
-int
-marvell_command_interface(int fd, smart_command_set command, int select, char *data)
-{ return -1; }
-
-int
-highpoint_command_interface(int fd, smart_command_set command, int select, char *data)
-{ return -1; }
 
 int
 ata_command_interface(int fd, smart_command_set command, int select, char *data)
@@ -357,20 +349,6 @@ ata_command_interface(int fd, smart_command_set command, int select, char *data)
     memcpy(data, inbuf, 512);
 
   return 0;
-}
-
-int
-escalade_command_interface(int fd, int disknum, int escalade_type, smart_command_set command, int select, char *data)
-{
-  printwarning(NO_3WARE, NULL);
-  return -1;
-}
-
-int
-areca_command_interface(int fd, int disknum, smart_command_set command, int select, char *data)
-{
-  printwarning(NO_ARECA, NULL);
-  return -1;
 }
 
 int
