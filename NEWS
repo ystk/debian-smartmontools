@@ -1,9 +1,126 @@
 smartmontools NEWS
 ------------------
-$Id: NEWS 3365 2011-06-09 18:47:31Z chrfranke $
+$Id: NEWS 3841 2013-07-26 17:38:57Z chrfranke $
 
 The most up-to-date version of this file is:
-http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/NEWS?view=markup
+http://sourceforge.net/p/smartmontools/code/HEAD/tree/trunk/smartmontools/NEWS
+
+Date 2013-07-26
+Summary: smartmontools release 6.2
+-----------------------------------------------------------
+- smartctl: Added ATA write cache reordering control using
+  '-g wcreorder' and '-s wcreorder,[on|off]' options.
+- update-smart-drivedb: Updated for new SVN repository.
+- HDD, SSD and USB additions to drive database.
+- Areca RAID support: Fixed possible segfault on empty port.
+- HPT RAID support: Maximum disk number increased to 128.
+- Linux: RHEL 9 compile fixes.
+- FreeBSD: Device scanning now skips port multipliers.
+- Cygwin: 64-bit compile fixes.
+- Windows: Fixed bogus temp file name in smartd_warning.cmd
+  (already included in smartmontools-6.1-2.win32-setup.exe).
+- Windows: smartd service is no longer installed as interactive.
+
+Date 2013-03-16
+Summary: smartmontools release 6.1
+-----------------------------------------------------------
+- smartctl '-l directory': improved output format.
+- smartctl: Fix parsing of '-l select,cont+SIZE' option.
+- smartctl prints ATA Additional Product Id (OEM Id).
+- smartctl '-s/-g wcache' for SCSI devices to control write cache.
+- smartctl '-s/-g rcache' for SCSI devices to control read cache.
+- smartctl prints more info for SCSI devices: media rotation rate,
+  form factor, physical block size, lowest LBA alignement,
+  logical block provisioning, disk protection type
+  and selftest progress status.
+- smartctl '--identify' updated for latest ATA ACS-3 spec.
+- smartd runs /etc/smartd_warning.sh to generate warning emails
+  (Windows: smartd_warning.cmd).
+- smartd '-w PATH' option to specify this executable.
+- smartd '-d ignore' directive.
+- smartd DEVICESCAN ignores devices already specified.
+- smartd: added support for state persistence ('-s') and attribute logging
+  ('-A') for SCSI devices.
+- smartd '-W' directive uses ATA attribute 190 if 194 is missing.
+- Support of larger SCSI defect lists via READ DEFECT(12).
+- Device type '-d usbjmicron,p' for Prolific USB bridges.
+- Many HDD, SSD and USB additions to drive database.
+- Linux: Support for SAS disks behind Areca controllers.
+- Linux: Improved support for SATA disks on LSI/Megaraid controllers
+- Linux: disks on MegaRaid controllers are automatically scanned
+- FreeBSD: Support for SAS disks behind Areca controllers.
+- FreeBSD: Enhanced ATA command support for 3ware.
+- FreeBSD: Support for 3ware 9750 (/dev/twsX).
+- FreeBSD: Fixed support for 48-bit ATA commands on legacy controllers
+  with ATACAM driver.
+- FreeBSD: Improved support for SAS/SCSI disks on LSI/Megaraid controllers.
+- Windows: smartd.conf '-M exec' supports path names with spaces.
+- Windows: Tool wtssendmsg.exe to handle smartd.conf '-m console'.
+- Windows: DEVICESCAN now supports up to 128 drives.
+- Windows: smartctl.exe and smartd.exe include VERSIONINFO resource.
+- Windows: smartd.exe includes MESSAGETABLE resource.
+- Windows: syslogevt.exe is no longer provided.
+
+Date 2012-10-10
+Summary: smartmontools release 6.0
+-----------------------------------------------------------
+- option/directive '-F nologdir' and '-F xerrorlba'.
+- smartctl '--identify' option.
+- smartctl prints nominal media rotation rate (ATA).
+- smartctl prints SATA version and speed.
+- smartctl '-l sataphy' works for CD/DVD drives also.
+- smartctl '-x' includes ATA Device Statistics.
+- smartd warning emails include device identify info.
+- smartd '-d' output is flushed to support redirection.
+- HDD, SSD and USB additions to drive database.
+- Windows smartd: smartd.conf directives '-m console',
+  '-m active', '-m connected'.
+- Windows: Support for SAS disks behind Areca controllers.
+- Windows: Win9x/ME and NT4 are no longer supported.
+
+Date 2012-06-30
+Summary: smartmontools release 5.43
+-----------------------------------------------------------
+- smartctl options '-g, --get' and '-s, --set' to get/set
+  various ATA settings: AAM, APM, Read look-ahead, Write
+  cache, Security (freeze), Standby mode/timer.
+- smartd directive '-e' to set (most of) the above settings
+  on startup.
+- smartctl options '-f hex' and '-f hex,[id|val]'.
+- smartctl does not start ATA self-test if another test is
+  already running.  Override with new option '-t force'.
+- smartctl supports extended self-test polling times
+  greater than 255 minutes.
+- Controller-independent SAT detection: '-d sat,auto[+TYPE]'.
+- smartd.conf DEFAULT directive.
+- Many HDD, SSD and USB additions to drive database.
+- Linux and FreeBSD: Support for SATA disks behind Areca SAS
+  RAID controllers and HP Smart Array controllers.
+- Windows: Support for SATA disks behind Areca controllers.
+- Windows smartd: directives '-l offlinests,ns' and
+  '-l selfteststs,ns'.
+- Windows installer: Combined 32-/64-bit support.
+- FreeBSD: fixed crash on SCSI devices with FreeBSD9-RC1
+
+Date 2011-10-20
+Summary: smartmontools release 5.42
+-----------------------------------------------------------
+- smartctl option '-l devstat' (Device Statistics).
+- smartctl option '-l ssd' (SSD endurance indicator).
+- smartd logs identify information of each SCSI/SAS device.
+- smartd resends warning emails if problem reappears.
+- smartd directives '-l offlinests' and '-l selfteststs'.
+- Many HDD, SSD and USB additions to drive database.
+- Platform-specific man pages.
+- smartd.8 man page no longer includes smartd.conf.5.
+- FreeBSD: Compilation fixes.
+- FreeBSD: Support for Areca controllers.
+- FreeBSD: Fix '-l scterc' support.
+- FreeBSD: Support for 48-bit ATA commands.
+- Linux: Support for Areca controllers enhanced.
+- Windows installer: UAC support.
+- Windows: update-smart-drivedb /S(ilent) option.
+- Windows: improved USB ID detection.
 
 Date 2011-06-09
 Summary: smartmontools release 5.41

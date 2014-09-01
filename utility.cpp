@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-12 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -13,8 +13,7 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
  *
  * This code was originally developed as a Senior Thesis by Michael Cornwell
  * at the Concurrent Systems Laboratory (now part of the Storage Systems
@@ -53,7 +52,7 @@
 #include "atacmds.h"
 #include "dev_interface.h"
 
-const char * utility_cpp_cvsid = "$Id: utility.cpp 3305 2011-03-30 21:32:05Z chrfranke $"
+const char * utility_cpp_cvsid = "$Id: utility.cpp 3838 2013-07-21 16:32:27Z chrfranke $"
                                  UTILITY_H_CVSID INT64_H_CVSID;
 
 const char * packet_types[] = {
@@ -91,7 +90,7 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
       "(build date "__DATE__")" // checkout without expansion of Id keywords
 #endif
       " [%s] "BUILD_INFO"\n"
-    "Copyright (C) 2002-11 by Bruce Allen, http://smartmontools.sourceforge.net\n",
+    "Copyright (C) 2002-13, Bruce Allen, Christian Franke, www.smartmontools.org\n",
     prog_name, smi()->get_os_version_str().c_str()
   );
   if (!full)
@@ -101,7 +100,8 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
     "\n"
     "%s comes with ABSOLUTELY NO WARRANTY. This is free\n"
     "software, and you are welcome to redistribute it under\n"
-    "the terms of the GNU General Public License Version 2.\n"
+    "the terms of the GNU General Public License; either\n"
+    "version 2, or (at your option) any later version.\n"
     "See http://www.gnu.org for further details.\n"
     "\n",
     prog_name
@@ -364,27 +364,62 @@ void syserror(const char *message){
   return;
 }
 
+// Check regular expression for non-portable features.
+//
 // POSIX extended regular expressions interpret unmatched ')' ordinary:
 // "The close-parenthesis shall be considered special in this context
 //  only if matched with a preceding open-parenthesis."
 //
-// Actual '(...)' nesting errors remain undetected on strict POSIX
-// implementations (glibc) but an error is reported on others (Cygwin).
-// 
-// The check below is rather incomplete because it does not handle
-// e.g. '\)' '[)]'.
-// But it should work for the regex subset used in drive database
-// and smartd '-s' directives.
-static int check_regex_nesting(const char * pattern)
+// GNU libc and BSD libc support unmatched ')', Cygwin reports an error.
+//
+// POSIX extended regular expressions do not define empty subexpressions:
+// "A vertical-line appearing first or last in an ERE, or immediately following
+//  a vertical-line or a left-parenthesis, or immediately preceding a
+//  right-parenthesis, produces undefined results."
+//
+// GNU libc and Cygwin support empty subexpressions, BSD libc reports an error.
+//
+static const char * check_regex(const char * pattern)
 {
-  int level = 0, i;
-  for (i = 0; pattern[i] && level >= 0; i++) {
-    switch (pattern[i]) {
-      case '(': level++; break;
-      case ')': level--; break;
+  int level = 0;
+  char c;
+
+  for (int i = 0; (c = pattern[i]); i++) {
+    // Skip "\x"
+    if (c == '\\') {
+      if (!pattern[++i])
+        break;
+      continue;
     }
+
+    // Skip "[...]"
+    if (c == '[') {
+      if (pattern[++i] == '^')
+        i++;
+      if (!pattern[i++])
+        break;
+      while ((c = pattern[i]) && c != ']')
+        i++;
+      if (!c)
+        break;
+      continue;
+    }
+
+    // Check "(...)" nesting
+    if (c == '(')
+      level++;
+    else if (c == ')' && --level < 0)
+      return "Unmatched ')'";
+
+    // Check for leading/trailing '|' or "||", "|)", "|$", "(|", "^|"
+    char c1;
+    if (   (c == '|' && (   i == 0 || !(c1 = pattern[i+1])
+                          || c1 == '|' || c1 == ')' || c1 == '$'))
+        || ((c == '(' || c == '^') && pattern[i+1] == '|')       )
+      return "Empty '|' subexpression";
   }
-  return level;
+
+  return (const char *)0;
 }
 
 // Wrapper class for regex(3)
@@ -465,8 +500,9 @@ bool regular_expression::compile()
     return false;
   }
 
-  if (check_regex_nesting(m_pattern.c_str()) < 0) {
-    m_errmsg = "Unmatched ')'";
+  const char * errmsg = check_regex(m_pattern.c_str());
+  if (errmsg) {
+    m_errmsg = errmsg;
     free_buf();
     return false;
   }
@@ -497,27 +533,6 @@ int split_report_arg(char *s, int *i)
   } else {
     // There's no integer part.
     *i = 1;
-  }
-
-  return 0;
-}
-
-// same as above but sets *i to -1 if missing , argument
-int split_report_arg2(char *s, int *i){
-  char *tailptr;
-  s+=6;
-
-  if (*s=='\0' || !isdigit((int)*s)) { 
-    // What's left must be integer
-    *i=-1;
-    return 1;
-  }
-
-  errno = 0;
-  *i = (int) strtol(s, &tailptr, 10);
-  if (errno || *tailptr != '\0') {
-    *i=-1;
-    return 1;
   }
 
   return 0;
@@ -616,6 +631,8 @@ int split_selective_arg(char *s, uint64_t *start,
       return 0;
     }
   }
+
+  errno = 0;
   *stop = strtoull(s+1, &tailptr, 0);
   if (errno || *tailptr != '\0')
     return 1;
@@ -701,33 +718,6 @@ bool nonempty(const void * data, int size)
     if (((const unsigned char *)data)[i])
       return true;
   return false;
-}
-
-
-// This routine converts an integer number of milliseconds into a test
-// string of the form Xd+Yh+Zm+Ts.msec.  The resulting text string is
-// written to the array.
-void MsecToText(unsigned int msec, char *txt){
-  unsigned int days, hours, min, sec;
-
-  days       = msec/86400000U;
-  msec      -= days*86400000U;
-
-  hours      = msec/3600000U; 
-  msec      -= hours*3600000U;
-
-  min        = msec/60000U;
-  msec      -= min*60000U;
-
-  sec        = msec/1000U;
-  msec      -= sec*1000U;
-
-  if (days) {
-    txt += sprintf(txt, "%2dd+", (int)days);
-  }
-
-  sprintf(txt, "%02d:%02d:%02d.%03d", (int)hours, (int)min, (int)sec, (int)msec);  
-  return;
 }
 
 // Format integer with thousands separator

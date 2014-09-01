@@ -1,15 +1,15 @@
 #
-# $Id: configure.in 3365 2011-06-09 18:47:31Z chrfranke $
+# $Id: configure.ac 3841 2013-07-26 17:38:57Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.50)
-AC_INIT(smartmontools, 5.41, smartmontools-support@lists.sourceforge.net)
+AC_INIT(smartmontools, 6.2, smartmontools-support@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(smartctl.cpp)
 
 smartmontools_configure_date=`date -u +'%Y-%m-%d %T %Z'`
-smartmontools_cvs_tag=`echo '$Id: configure.in 3365 2011-06-09 18:47:31Z chrfranke $'`
-smartmontools_release_date=2011-06-09
-smartmontools_release_time="18:46:32 UTC"
+smartmontools_cvs_tag=`echo '$Id: configure.ac 3841 2013-07-26 17:38:57Z chrfranke $'`
+smartmontools_release_date=2013-07-26
+smartmontools_release_time="17:38:20 UTC"
 
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",            [smartmontools Configure Arguments])
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_DATE, "$smartmontools_configure_date", [smartmontools Configure Date])
@@ -20,7 +20,7 @@ AC_DEFINE_UNQUOTED(PACKAGE_HOMEPAGE,             "http://smartmontools.sourcefor
 
 AM_CONFIG_HEADER(config.h)
 
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([foreign])
 
 AM_MAINTAINER_MODE
 
@@ -29,14 +29,18 @@ dnl Checks for programs.
 AC_PROG_CXX
 AM_PROG_AS
 AC_PROG_INSTALL
-PKG_PROG_PKG_CONFIG
+
+m4_pattern_forbid([^PKG_PROG_])
+if test "$cross_compiling" = "no"; then
+  m4_ifdef([PKG_PROG_PKG_CONFIG], [PKG_PROG_PKG_CONFIG],
+    [AC_MSG_WARN([m4/pkg.m4 missing, systemd detection disabled])])
+fi
 
 AC_ARG_VAR(WINDMC, [Windows message compiler command])
 AC_ARG_VAR(WINDRES, [Windows resource compiler command])
 AC_ARG_VAR(MAKENSIS, [NSIS compiler command])
 
 AC_CANONICAL_HOST
-dnl Set flags which may affect AC_CHECK_*.
 case "${host}" in
   *-*-mingw*)
     # Cygwin gcc 4.x does no longer support '-mno-cygwin' to select MinGW gcc.
@@ -44,8 +48,8 @@ case "${host}" in
     /usr/bin/uname | grep -i '^CYGWIN' >/dev/null; then
       AC_MSG_ERROR([Build with MinGW on Cygwin requires cross-compilation, see INSTALL file.])
     fi
-    AC_CHECK_PROGS(WINDMC, [${host}-windmc windmc])
-    AC_CHECK_PROGS(WINDRES, [${host}-windres windres])
+    AC_CHECK_TOOL(WINDMC, [windmc])
+    AC_CHECK_TOOL(WINDRES, [windres])
 
     AC_MSG_CHECKING([checking for makensis])
     if test -z "$MAKENSIS"; then
@@ -56,33 +60,33 @@ case "${host}" in
       fi
     fi
     AC_MSG_RESULT([${MAKENSIS:-no}])
-
-    CPPFLAGS="$CPPFLAGS -I$srcdir/os_win32"
-    ;;
-  *-*-freebsd*)
-    CPPFLAGS="$CPPFLAGS -I/usr/src/sys"
     ;;
 esac
 
 # Check for SVN.
 AC_MSG_CHECKING([whether this is a build from SVN])
 is_svn_build=no
-if test -f "$srcdir/.svn/entries"; then
+svn_deps=
+if test -f "$srcdir/.svn/wc.db"; then
+  # SVN 1.7, 1.8 working copy
+  svn_deps='${srcdir}/.svn/wc.db'
+elif test -f "${srcdir}/.svn/entries"; then
+  # SVN <= 1.6 working copy (SVN 1.7 has empty entries file)
+  svn_deps='${srcdir}/.svn/entries'
+fi
+if test -n "$svn_deps"; then
   is_svn_build=unknown
   if (cd "$srcdir" && svn --version && svnversion && svn info) >/dev/null 2>&1; then
     is_svn_build=yes
   fi
 fi
+AC_SUBST([svn_deps])
 AM_CONDITIONAL(IS_SVN_BUILD, [test "$is_svn_build" = "yes"])
 AC_MSG_RESULT([$is_svn_build])
 
-dnl Checks for libraries needed for name services (Solaris needs
-dnl libnsl, might in the future also need libsocket)
-#  AC_SEARCH_LIBS (FUNCTION, SEARCH-LIBS, [ACTION-IF-FOUND], [ACTION-IF-NOT-FOUND], [OTHER-LIBRARIES])
-AC_SEARCH_LIBS(socket, socket)
-AC_SEARCH_LIBS(gethostbyname, nsl)
-AC_SEARCH_LIBS(getaddrinfo, nsl)
-AC_SEARCH_LIBS(getdomainname, nsl)
+# Note: On Linux, clock_gettime() requires -lrt which implies -lpthreads
+# Check ommitted for now, gettimeofday() provides reasonable precision
+# AC_SEARCH_LIBS(clock_gettime, rt)
 
 dnl Checks for header files.
 AC_CHECK_HEADERS([locale.h])
@@ -98,10 +102,13 @@ AC_CHECK_HEADERS([sys/tweio.h])
 AC_CHECK_HEADERS([sys/twereg.h])
 dnl Check for FreeBSD twa include files...
 AC_CHECK_HEADERS([sys/tw_osl_ioctl.h])
-dnl Check for FreeBSD ciss include files...
-AC_CHECK_HEADERS([dev/ciss/cissio.h])
 dnl This header file is needed for cciss_ioctl.h at least on SuSE LINUX
 AC_CHECK_HEADERS([linux/compiler.h])
+dnl Check for the FreeBSD CCISS system header and use internal one if not found
+AC_CHECK_HEADERS([dev/ciss/cissio.h],
+    [AC_DEFINE([CISS_LOCATION],[<dev/ciss/cissio.h>],[freebsd ciss header location])],
+    [AC_DEFINE([CISS_LOCATION],["cissio_freebsd.h"],[freebsd ciss header location])]
+    )
 dnl Check for Linux CCISS include file
 AC_CHECK_HEADERS([linux/cciss_ioctl.h], [], [], [AC_INCLUDES_DEFAULT
 #ifdef HAVE_LINUX_COMPILER_H
@@ -123,13 +130,10 @@ AM_CONDITIONAL(NEED_GETOPT_LONG, [test "$need_getopt_long" = "yes"])
 AC_CHECK_FUNCS([regcomp], [need_regex=no], [need_regex=yes])
 AM_CONDITIONAL(NEED_REGEX, [test "$need_regex" = "yes"])
 
-AC_CHECK_FUNCS([getdomainname])
-AC_CHECK_FUNCS([gethostname])
-AC_CHECK_FUNCS([getaddrinfo])
-AC_CHECK_FUNCS([gethostbyname])
 AC_CHECK_FUNCS([sigset])
 AC_CHECK_FUNCS([strtoull])
 AC_CHECK_FUNCS([uname])
+AC_CHECK_FUNCS([clock_gettime ftime gettimeofday])
 
 # Check byte ordering (defines WORDS_BIGENDIAN)
 AC_C_BIGENDIAN
@@ -148,13 +152,13 @@ fi
 AC_MSG_RESULT([$libc_have_working_snprintf])
 
 # check for __attribute__((packed))
+# (sizeof() check is required to avoid false positives if other
+# __attribute__((x)) are supported)
 AC_MSG_CHECKING([whether $CXX supports __attribute__((packed))])
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM(, [[struct a { int b; } __attribute__((packed));]])],
-                  [gcc_have_attr_packed=yes], [gcc_have_attr_packed=no])
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM(, [[#if defined(__SUNPRO_C) || defined(__SUNPRO_CC)
-#error "Sun's compiler cannot handle __attribute__((packed))!"
-#endif]])],
-                  [true], [gcc_have_attr_packed=no])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM(, [[
+    struct s { char a; short b; } __attribute__((packed));
+    typedef char t[sizeof(struct s) == 3 ? 1 : -1];]])],
+  [gcc_have_attr_packed=yes], [gcc_have_attr_packed=no])
 AC_SUBST(gcc_have_attr_packed)
 if test "$gcc_have_attr_packed" = "yes"; then
   AC_DEFINE(HAVE_ATTR_PACKED, 1, [Define to 1 if C++ compiler supports __attribute__((packed))])
@@ -172,7 +176,11 @@ AC_ARG_WITH(systemdsystemunitdir,
 systemdsystemunitdir=
 case "$with_systemdsystemunitdir" in
  auto|yes)
-   test -n "$PKG_CONFIG" && systemdsystemunitdir=`$PKG_CONFIG --variable=systemdsystemunitdir systemd`
+   if test -n "$PKG_CONFIG"; then
+     AC_MSG_CHECKING([for systemdsystemunitdir])
+     systemdsystemunitdir=`$PKG_CONFIG --variable=systemdsystemunitdir systemd`
+     AC_MSG_RESULT([${systemdsystemunitdir:-no}])
+   fi
    case "$with_systemdsystemunitdir:$sysconfdir:$systemdsystemunitdir" in
      yes:*:) AC_MSG_ERROR([Location of systemd service files not found]) ;;
      yes:*:*|auto:*:|auto:/etc:*) ;;
@@ -188,26 +196,23 @@ AC_ARG_WITH(initscriptdir,
   [AC_HELP_STRING([--with-initscriptdir@<:@=DIR|auto|yes|no@:>@], [Location of init scripts [auto]])],
   [], [with_initscriptdir=auto])
 
-AC_MSG_CHECKING(which init (rc) directory to use)
-initddir=""
-for dir in rc.d/init.d init.d rc.d; do
-  if test -d /etc/$dir; then
-    initddir='${sysconfdir}'/$dir
-    break
-  fi
-done
-AC_MSG_RESULT([${initddir:-not found}])
-
-case "$with_initscriptdir" in
-  auto) test -n "$systemdsystemunitdir" && initddir= ;;
-  yes)
-   if test -z "$initddir"; then
-     AC_MSG_ERROR([Location of init scripts not found])
-   fi ;;
-  no) initddir= ;;
+initddir=
+case "$with_initscriptdir:$cross_compiling:$systemdsystemunitdir" in
+  auto:no:|yes:*)
+    AC_MSG_CHECKING([for init (rc) directory])
+    for dir in rc.d/init.d init.d rc.d; do
+      if test -d /etc/$dir; then
+        initddir='${sysconfdir}'/$dir
+        break
+      fi
+    done
+    AC_MSG_RESULT([${initddir:-no}])
+    case "$with_initscriptdir:$initddir" in
+      yes:) AC_MSG_ERROR([Location of init scripts not found]) ;;
+    esac ;;
+  auto:*|no:*) ;;
   *) initddir="$with_initscriptdir" ;;
 esac
-
 AC_SUBST(initddir)
 AM_CONDITIONAL(INSTALL_INITSCRIPT, [test -n "$initddir"])
 
@@ -334,60 +339,79 @@ AC_SUBST(smartmontools_release_time)
 # Set platform-specific modules and symbols
 os_libs=
 os_dltools='curl wget lynx'
-os_mailer=
+os_mailer=mail
+os_hostname="'hostname'"
+os_dnsdomainname=
+os_nisdomainname="'domainname'"
 os_darwin=no
 os_solaris=no
 os_win32=no
 os_win32_mingw=no
 os_win64=no
+os_man_filter=
 case "${host}" in
   *-*-linux*)
-    os_deps='os_linux.o cciss.o'
+    os_deps='os_linux.o cciss.o dev_areca.o'
+    os_dnsdomainname="'dnsdomainname' 'hostname -d'"
+    os_nisdomainname="'nisdomainname' 'hostname -y' 'domainname'"
+    os_man_filter=Linux
     ;;
   *-*-freebsd*|*-*-dragonfly*|*-*-kfreebsd*-gnu*)
-    os_deps='os_freebsd.o cciss.o'
+    os_deps='os_freebsd.o cciss.o dev_areca.o'
     os_libs='-lcam'
     os_dltools='curl wget lynx fetch'
     AC_CHECK_LIB(usb, libusb20_dev_get_device_desc)
+    os_man_filter=FreeBSD
     ;;
   sparc-*-solaris*)
     os_deps='os_solaris.o os_solaris_ata.o'
     os_mailer='mailx'
     os_solaris=yes
+    os_man_filter=Solaris
     ;;
   *-pc-solaris*)
     os_deps='os_solaris.o'
     os_mailer='mailx'
     os_solaris=yes
+    os_man_filter=Solaris
     ;;
   *-*-netbsd*)
     os_deps='os_netbsd.o'
     os_libs='-lutil'
+    os_man_filter=NetBSD
     ;;
   *-*-openbsd*)
     os_deps='os_openbsd.o'
     os_libs='-lutil'
     os_dltools='curl wget lynx ftp'
+    os_man_filter=OpenBSD
     ;;
   *-*-cygwin*)
-    os_deps='os_win32.o'
+    os_deps='os_win32.o dev_areca.o'
+    os_hostname="'hostname' 'echo "'"${HOSTNAME?unset}"'"'"
+    os_dnsdomainname="'dnsdomainname' 'hostname -d' 'echo "'"${USERDNSDOMAIN?unset}"'"'"
+    os_nisdomainname=
     os_win32=yes
+    os_man_filter=Cygwin
     ;;
   x86_64-*-mingw*)
-    os_deps='os_win32.o'
+    os_deps='os_win32.o dev_areca.o'
     os_win32=yes
     os_win32_mingw=yes
     os_win64=yes
+    os_man_filter=Windows
     ;;
   *-*-mingw*)
-    os_deps='os_win32.o'
+    os_deps='os_win32.o dev_areca.o'
     os_win32=yes
     os_win32_mingw=yes
+    os_man_filter=Windows
     ;;
   *-*-darwin*)
     os_deps='os_darwin.o'
     os_libs='-framework CoreFoundation -framework IOKit'
     os_darwin=yes
+    os_man_filter=Darwin
     ;;
   *-*-nto-qnx*)
     os_deps='os_qnxnto.o'
@@ -415,9 +439,11 @@ AC_MSG_RESULT([$os_new_interface])
 AC_SUBST([os_deps])
 AC_SUBST([os_libs])
 AC_SUBST([os_dltools])
-if test -n "$os_mailer"; then
-  AC_DEFINE_UNQUOTED(DEFAULT_MAILER, "$os_mailer", [Default mailer if "mail" is unavailable])
-fi
+AC_SUBST([os_mailer])
+AC_SUBST([os_hostname])
+AC_SUBST([os_dnsdomainname])
+AC_SUBST([os_nisdomainname])
+AC_SUBST([os_man_filter])
 
 # Create drivedb.h update branch name from version: 5.41[.X] -> RELEASE_5_41_DRIVEDB
 DRIVEDB_BRANCH=`echo $VERSION | sed 's,^\([[0-9]]*\.[[0-9]]*\)\..*$,\1,' \
@@ -433,7 +459,6 @@ AM_CONDITIONAL(OS_SOLARIS, [test "$os_solaris" = "yes"])
 AM_CONDITIONAL(OS_WIN32, [test "$os_win32" = "yes"])
 AM_CONDITIONAL(OS_WIN32_MINGW, [test "$os_win32_mingw" = "yes"])
 AM_CONDITIONAL(OS_WIN32_NSIS, [test -n "$MAKENSIS"])
-AM_CONDITIONAL(OS_WIN32_WINDMC, [test -n "$WINDMC" && test "$WINDMC" != "no" && test -n "$WINDRES"])
 AM_CONDITIONAL(OS_WIN64, [test "$os_win64" = "yes"])
 
 dnl Add -Wall and -W if using g++ and its not already specified.
@@ -523,6 +548,7 @@ case "$host_os" in
     fi
     echo "local drive database:   `eval eval eval echo $sysconfdir`/smart_drivedb.h" >&AS_MESSAGE_FD
     echo "smartd config file:     `eval eval eval echo $sysconfdir`/smartd.conf${smartd_suffix}" >&AS_MESSAGE_FD
+    echo "smartd warning script:  `eval eval eval echo $sysconfdir`/smartd_warning.sh" >&AS_MESSAGE_FD
     if test -n "$initddir"; then
       echo "smartd initd script:    `eval eval eval echo $initddir`/smartd${smartd_suffix}" >&AS_MESSAGE_FD
     elif test -z "$systemdsystemunitdir"; then

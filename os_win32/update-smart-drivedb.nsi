@@ -3,7 +3,7 @@
 ;
 ; Home page of code is: http://smartmontools.sourceforge.net
 ;
-; Copyright (C) 2011 Christian Franke <smartmontools-support@lists.sourceforge.net>
+; Copyright (C) 2011-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 ; You should have received a copy of the GNU General Public License
 ; (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
 ;
-; $Id: update-smart-drivedb.nsi 3296 2011-03-16 22:17:51Z chrfranke $
+; $Id: update-smart-drivedb.nsi 3815 2013-06-06 17:31:59Z chrfranke $
 ;
 
 
@@ -49,7 +49,7 @@ Section ""
   Push $0
   Call Download
   IfErrors 0 endload
-    MessageBox MB_OK "Download failed"
+    MessageBox MB_OK "Download failed" /SD IDOK
     Abort "Download failed"
   endload:
 
@@ -59,7 +59,7 @@ Section ""
     ExecWait '.\smartctl-nc.exe -B drivedb.h.new -P showall' $1
     StrCmp $1 "0" endsyntax
       Rename "drivedb.h.new" "drivedb.h.error"
-      MessageBox MB_OK "drivedb.h.error: rejected by smartctl, probably no longer compatible"
+      MessageBox MB_OK "drivedb.h.error: rejected by smartctl, probably no longer compatible" /SD IDOK
       Abort "drivedb.h.error: rejected by smartctl, probably no longer compatible"
   endsyntax:
 
@@ -69,7 +69,7 @@ Section ""
     Call Cmp
     IfErrors changed 0
       DetailPrint "drivedb.h is already up to date"
-      MessageBox MB_OK "$INSTDIR\drivedb.h is already up to date"
+      MessageBox MB_OK "$INSTDIR\drivedb.h is already up to date" /SD IDOK
       Delete "drivedb.h.new"
       DetailPrint "Create file: drivedb.h.lastcheck"
       FileOpen $1 "drivedb.h.lastcheck" w
@@ -81,7 +81,7 @@ Section ""
 
   endcomp:
   Rename "drivedb.h.new" "drivedb.h"
-  MessageBox MB_OK "$INSTDIR\drivedb.h updated from $0"
+  MessageBox MB_OK "$INSTDIR\drivedb.h updated from $0" /SD IDOK
 
 SectionEnd
 
@@ -95,10 +95,10 @@ Function Download
   Pop $R0
   DetailPrint "Download from $R0"
 
-  ; Trac repository browser (does not return HTTP 404 errors)
-  StrCpy $R1 "http://sourceforge.net/apps/trac/smartmontools/export/HEAD/$R0/smartmontools/drivedb.h"
-  ; ViewVC repository browser (does not return ContentLength required for NSISdl::download)
-  ;StrCpy $R1 "http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/$R0/smartmontools/drivedb.h?revision=HEAD"
+  ; SVN repository read-only URL
+  ; (SF code browser does not return ContentLength required for NSISdl::download)
+  StrCpy $R1 "http://svn.code.sf.net/p/smartmontools/code/$R0/smartmontools/drivedb.h"
+
   DetailPrint "($R1)"
 
   NSISdl::download $R1 "drivedb.h.new"
@@ -124,18 +124,18 @@ FunctionEnd
 ; Compare drivedb.h drivedb.h.new, SetErrors if different
 ; TODO: ignore differences in Id string
 Function Cmp
-    ClearErrors
-    FileOpen $R0 "drivedb.h" r
-    FileOpen $R1 "drivedb.h.new" r
-    readloop:
-      FileRead $R0 $R2
-      FileRead $R1 $R3
-      StrCmp $R2 $R3 0 +2
-    IfErrors 0 readloop
-    FileClose $R0
-    FileClose $R1
-    ClearErrors
+  ClearErrors
+  FileOpen $R0 "drivedb.h" r
+  FileOpen $R1 "drivedb.h.new" r
+  readloop:
+    FileRead $R0 $R2
+    FileRead $R1 $R3
     StrCmp $R2 $R3 0 +2
-      Return
-    SetErrors
+  IfErrors 0 readloop
+  FileClose $R0
+  FileClose $R1
+  ClearErrors
+  StrCmp $R2 $R3 0 +2
+    Return
+  SetErrors
 FunctionEnd
