@@ -1,11 +1,17 @@
 #!/bin/sh
-# $Id: autogen.sh 3829 2013-07-08 15:13:16Z samm2 $
+# $Id: autogen.sh 3917 2014-06-20 19:57:41Z chrfranke $
 #
 # Generate ./configure from config.in and Makefile.in from Makefile.am.
 # This also adds files like missing,depcomp,install-sh to the source
 # directory. To update these files at a later date use:
 #	autoreconf -f -i -v
 
+force=; warnings=
+while [ $# -gt 0 ]; do case $1 in
+  --force) force=$1; shift ;;
+  --warnings=?*) warnings="${warnings} $1"; shift ;;
+  *) echo "Usage: $0 [--force] [--warnings=CATEGORY ...]"; exit 1 ;;
+esac; done
 
 # Cygwin?
 test -x /usr/bin/uname && /usr/bin/uname | grep -i CYGWIN >/dev/null &&
@@ -32,19 +38,21 @@ typep()
     return 1
 }
 
-test -x "$AUTOMAKE" || AUTOMAKE=`typep automake-1.12` ||
+test -x "$AUTOMAKE" ||
+    AUTOMAKE=`typep automake-1.14` ||
+    AUTOMAKE=`typep automake-1.13` || AUTOMAKE=`typep automake-1.12` ||
     AUTOMAKE=`typep automake-1.11` || AUTOMAKE=`typep automake-1.10` ||
     AUTOMAKE=`typep automake-1.9` || AUTOMAKE=`typep automake-1.8` ||
     AUTOMAKE=`typep automake-1.7` || AUTOMAKE=`typep automake17` ||
 {
 echo
-echo "You must have at least GNU Automake 1.7 (up to 1.11) installed"
+echo "You must have at least GNU Automake 1.7 (up to 1.14) installed"
 echo "in order to bootstrap smartmontools from SVN. Download the"
 echo "appropriate package for your distribution, or the source tarball"
 echo "from ftp://ftp.gnu.org/gnu/automake/ ."
 echo
 echo "Also note that support for new Automake series (anything newer"
-echo "than 1.11) is only added after extensive tests. If you live in"
+echo "than 1.14) is only added after extensive tests. If you live in"
 echo "the bleeding edge, you should know what you're doing, mainly how"
 echo "to test it before the developers. Be patient."
 exit 1;
@@ -70,6 +78,7 @@ case "$AUTOMAKE" in
 esac
 
 # Warn if Automake version was not tested or does not support filesystem
+amwarnings=$warnings
 case "$ver" in
   1.[78]|1.[78].*)
     # Check for case sensitive filesystem
@@ -84,8 +93,14 @@ case "$ver" in
     rm -f casetest.tmp
     ;;
 
-  1.9.[1-6]|1.10|1.10.[12]|1.11|1.11.[1-6]|1.12.[2-5])
+  1.9.[1-6]|1.10|1.10.[123]|1.11|1.11.[1-6]|1.12.[2-6]|1.13.[34])
     # OK
+    ;;
+
+  1.14|1.14.1)
+    # TODO: Enable 'subdir-objects' in configure.ac
+    # For now, suppress 'subdir-objects' forward-incompatibility warning
+    test -n "$warnings" || amwarnings="--warnings=no-unsupported"
     ;;
 
   *)
@@ -96,6 +111,7 @@ esac
 # Install pkg-config macros
 # (Don't use 'aclocal -I m4 --install' to keep support for automake < 1.10)
 test -d m4 || mkdir m4 || exit 1
+test -z "$force" || rm -f m4/pkg.m4
 test -f m4/pkg.m4 || acdir=`${ACLOCAL} --print-ac-dir` &&
   test -n "$acdir" && test -f "$acdir/pkg.m4" &&
 {
@@ -107,7 +123,9 @@ test -f m4/pkg.m4 ||
 
 set -e	# stops on error status
 
-${ACLOCAL} -I m4
-autoheader
-${AUTOMAKE} --add-missing --copy
-autoconf
+test -z "$warnings" || set -x
+
+${ACLOCAL} -I m4 $force $warnings
+autoheader $force $warnings
+${AUTOMAKE} --add-missing --copy ${force:+--force-missing} $amwarnings
+autoconf $force $warnings

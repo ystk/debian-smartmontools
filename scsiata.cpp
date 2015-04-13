@@ -62,7 +62,7 @@
 #include "dev_ata_cmd_set.h" // ata_device_with_command_set
 #include "dev_tunnelled.h" // tunnelled_device<>
 
-const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 3741 2013-01-02 17:06:54Z chrfranke $";
+const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 3922 2014-06-23 19:17:18Z chrfranke $";
 
 /* This is a slightly stretched SCSI sense "descriptor" format header.
    The addition is to allow the 0x70 and 0x71 response codes. The idea
@@ -980,7 +980,7 @@ bool usbjmicron_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & ou
   memset(&io_hdr, 0, sizeof(io_hdr));
 
   bool rwbit = true;
-  unsigned char smart_status = 0;
+  unsigned char smart_status = 0xff;
 
   bool is_smart_status = (   in.in_regs.command  == ATA_SMART_CMD
                           && in.in_regs.features == ATA_SMART_STATUS);
@@ -1038,15 +1038,22 @@ bool usbjmicron_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & ou
 
   if (in.out_needed.is_set()) {
     if (is_smart_status) {
+      if (io_hdr.resid == 1)
+        // Some (Prolific) USB bridges do not transfer a status byte
+        return set_err(ENOSYS, "Incomplete response, status byte missing [JMicron]");
+
       switch (smart_status) {
-        case 0x01: case 0xc2:
+        case 0xc2:
           out.out_regs.lba_high = 0xc2;
           out.out_regs.lba_mid = 0x4f;
           break;
-        case 0x00: case 0x2c:
+        case 0x2c:
           out.out_regs.lba_high = 0x2c;
           out.out_regs.lba_mid = 0xf4;
           break;
+        default:
+          // Some (JM20336) USB bridges always return 0x01, regardless of SMART Status
+          return set_err(ENOSYS, "Invalid status byte (0x%02x) [JMicron]", smart_status);
       }
     }
 

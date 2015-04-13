@@ -4,7 +4,7 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  *
  * Copyright (C) 2002-12 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -52,7 +52,7 @@
 #include "atacmds.h"
 #include "dev_interface.h"
 
-const char * utility_cpp_cvsid = "$Id: utility.cpp 3838 2013-07-21 16:32:27Z chrfranke $"
+const char * utility_cpp_cvsid = "$Id: utility.cpp 3937 2014-07-05 17:51:21Z chrfranke $"
                                  UTILITY_H_CVSID INT64_H_CVSID;
 
 const char * packet_types[] = {
@@ -83,14 +83,14 @@ const char * packet_types[] = {
 std::string format_version_info(const char * prog_name, bool full /*= false*/)
 {
   std::string info = strprintf(
-    "%s "PACKAGE_VERSION" "
+    "%s " PACKAGE_VERSION " "
 #ifdef SMARTMONTOOLS_SVN_REV
-      SMARTMONTOOLS_SVN_DATE" r"SMARTMONTOOLS_SVN_REV
+      SMARTMONTOOLS_SVN_DATE " r" SMARTMONTOOLS_SVN_REV
 #else
-      "(build date "__DATE__")" // checkout without expansion of Id keywords
+      "(build date " __DATE__ ")" // checkout without expansion of Id keywords
 #endif
-      " [%s] "BUILD_INFO"\n"
-    "Copyright (C) 2002-13, Bruce Allen, Christian Franke, www.smartmontools.org\n",
+      " [%s] " BUILD_INFO "\n"
+    "Copyright (C) 2002-14, Bruce Allen, Christian Franke, www.smartmontools.org\n",
     prog_name, smi()->get_os_version_str().c_str()
   );
   if (!full)
@@ -106,21 +106,21 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
     "\n",
     prog_name
   );
-  info += strprintf(
-    "smartmontools release "PACKAGE_VERSION
-      " dated "SMARTMONTOOLS_RELEASE_DATE" at "SMARTMONTOOLS_RELEASE_TIME"\n"
+  info +=
+    "smartmontools release " PACKAGE_VERSION
+      " dated " SMARTMONTOOLS_RELEASE_DATE " at " SMARTMONTOOLS_RELEASE_TIME "\n"
 #ifdef SMARTMONTOOLS_SVN_REV
-    "smartmontools SVN rev "SMARTMONTOOLS_SVN_REV
-      " dated "SMARTMONTOOLS_SVN_DATE" at "SMARTMONTOOLS_SVN_TIME"\n"
+    "smartmontools SVN rev " SMARTMONTOOLS_SVN_REV
+      " dated " SMARTMONTOOLS_SVN_DATE " at " SMARTMONTOOLS_SVN_TIME "\n"
 #else
     "smartmontools SVN rev is unknown\n"
 #endif
-    "smartmontools build host: "SMARTMONTOOLS_BUILD_HOST"\n"
-    "smartmontools build configured: "SMARTMONTOOLS_CONFIGURE_DATE "\n"
-    "%s compile dated "__DATE__" at "__TIME__"\n"
-    "smartmontools configure arguments: ",
-    prog_name
-  );
+    "smartmontools build host: " SMARTMONTOOLS_BUILD_HOST "\n"
+#if defined(__GNUC__) && defined(__VERSION__) // works also with CLang
+    "smartmontools build with: GCC " __VERSION__ "\n"
+#endif
+    "smartmontools configure arguments: "
+  ;
   info += (sizeof(SMARTMONTOOLS_CONFIGURE_ARGS) > 1 ?
            SMARTMONTOOLS_CONFIGURE_ARGS : "[no arguments given]");
   info += '\n';
@@ -265,7 +265,7 @@ const char *packetdevicetype(int type){
 }
 
 // Runtime check of byte ordering, throws if different from isbigendian().
-void check_endianness()
+static void check_endianness()
 {
   union {
     // Force compile error if int type is not 32bit.
@@ -735,7 +735,7 @@ const char * format_with_thousands_sep(char * str, int strsize, uint64_t val,
   }
 
   char num[64];
-  snprintf(num, sizeof(num), "%"PRIu64, val);
+  snprintf(num, sizeof(num), "%" PRIu64, val);
   int numlen = strlen(num);
 
   int i = 0, j = 0;
@@ -783,12 +783,12 @@ const char * format_capacity(char * str, int strsize, uint64_t val,
   if (i == 0)
     snprintf(str, strsize, "%u B", (unsigned)n);
   else if (n >= 100) // "123 xB"
-    snprintf(str, strsize, "%"PRIu64" %cB", n, prefixes[i]);
+    snprintf(str, strsize, "%" PRIu64 " %cB", n, prefixes[i]);
   else if (n >= 10)  // "12.3 xB"
-    snprintf(str, strsize, "%"PRIu64"%s%u %cB", n, decimal_point,
+    snprintf(str, strsize, "%" PRIu64 "%s%u %cB", n, decimal_point,
         (unsigned)(((val % d) * 10) / d), prefixes[i]);
   else               // "1.23 xB"
-    snprintf(str, strsize, "%"PRIu64"%s%02u %cB", n, decimal_point,
+    snprintf(str, strsize, "%" PRIu64 "%s%02u %cB", n, decimal_point,
         (unsigned)(((val % d) * 100) / d), prefixes[i]);
 
   return str;
@@ -814,8 +814,8 @@ std::string strprintf(const char * fmt, ...)
 
 
 #ifndef HAVE_WORKING_SNPRINTF
-// Some versions of (v)snprintf() don't append null char on overflow (MSVCRT.DLL),
-// and/or return -1 on overflow (old Linux).
+// Some versions of (v)snprintf() don't append null char (MSVCRT.DLL),
+// and/or return -1 on output truncation (glibc <= 2.0.6).
 // Below are sane replacements substituted by #define in utility.h.
 
 #undef vsnprintf
@@ -844,5 +844,25 @@ int safe_snprintf(char *buf, int size, const char *fmt, ...)
   return i;
 }
 
-#endif
+#else // HAVE_WORKING_SNPRINTF
 
+static void check_snprintf()
+{
+  char buf[] =              "ABCDEFGHI";
+  int n1 = snprintf(buf, 8, "123456789");
+  int n2 = snprintf(buf, 0, "X");
+  if (!(!strcmp(buf, "1234567") && n1 == 9 && n2 == 1))
+    throw std::logic_error("Function snprintf() does not conform to C99,\n"
+                           "please contact " PACKAGE_BUGREPORT);
+}
+
+#endif // HAVE_WORKING_SNPRINTF
+
+// Runtime check of ./configure result, throws on error.
+void check_config()
+{
+  check_endianness();
+#ifdef HAVE_WORKING_SNPRINTF
+  check_snprintf();
+#endif
+}

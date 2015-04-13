@@ -1,30 +1,28 @@
 #
-# $Id: configure.ac 3841 2013-07-26 17:38:57Z chrfranke $
+# $Id: configure.ac 3977 2014-07-26 11:03:24Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.50)
-AC_INIT(smartmontools, 6.2, smartmontools-support@lists.sourceforge.net)
+AC_INIT(smartmontools, 6.4, smartmontools-support@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(smartctl.cpp)
 
-smartmontools_configure_date=`date -u +'%Y-%m-%d %T %Z'`
-smartmontools_cvs_tag=`echo '$Id: configure.ac 3841 2013-07-26 17:38:57Z chrfranke $'`
-smartmontools_release_date=2013-07-26
-smartmontools_release_time="17:38:20 UTC"
+smartmontools_cvs_tag=`echo '$Id: configure.ac 3977 2014-07-26 11:03:24Z chrfranke $'`
+smartmontools_release_date=2014-07-26
+smartmontools_release_time="09:49:11 UTC"
 
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",            [smartmontools Configure Arguments])
-AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_DATE, "$smartmontools_configure_date", [smartmontools Configure Date])
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_DATE,   "$smartmontools_release_date",   [smartmontools Release Date])
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_TIME,   "$smartmontools_release_time",   [smartmontools Release Time])
 AC_DEFINE_UNQUOTED(CONFIG_H_CVSID,               "$smartmontools_cvs_tag",        [smartmontools CVS Tag])
 AC_DEFINE_UNQUOTED(PACKAGE_HOMEPAGE,             "http://smartmontools.sourceforge.net/", [smartmontools Home Page])
 
-AM_CONFIG_HEADER(config.h)
+AC_CONFIG_HEADER([config.h])
 
 AM_INIT_AUTOMAKE([foreign])
 
 AM_MAINTAINER_MODE
 
-AC_LANG_CPLUSPLUS
+AC_LANG([C++])
 dnl Checks for programs.
 AC_PROG_CXX
 AM_PROG_AS
@@ -43,15 +41,10 @@ AC_ARG_VAR(MAKENSIS, [NSIS compiler command])
 AC_CANONICAL_HOST
 case "${host}" in
   *-*-mingw*)
-    # Cygwin gcc 4.x does no longer support '-mno-cygwin' to select MinGW gcc.
-    if test "${build}" = "${host}" && test -x /usr/bin/uname && \
-    /usr/bin/uname | grep -i '^CYGWIN' >/dev/null; then
-      AC_MSG_ERROR([Build with MinGW on Cygwin requires cross-compilation, see INSTALL file.])
-    fi
     AC_CHECK_TOOL(WINDMC, [windmc])
     AC_CHECK_TOOL(WINDRES, [windres])
 
-    AC_MSG_CHECKING([checking for makensis])
+    AC_MSG_CHECKING([for makensis])
     if test -z "$MAKENSIS"; then
       if test -n "$PROGRAMFILES" && "$PROGRAMFILES/NSIS/makensis" -VERSION >/dev/null 2>&1; then
         MAKENSIS="$PROGRAMFILES/NSIS/makensis"
@@ -138,19 +131,6 @@ AC_CHECK_FUNCS([clock_gettime ftime gettimeofday])
 # Check byte ordering (defines WORDS_BIGENDIAN)
 AC_C_BIGENDIAN
 
-# Check whether snprintf appends null char and returns expected length on overflow
-AC_MSG_CHECKING([for working snprintf])
-AC_RUN_IFELSE([AC_LANG_PROGRAM([[#include <stdio.h>]], [[ char buf[]="ABCDEFGHI";
-               int i=snprintf(buf,8,"12345678"); return !(!buf[7] && i==8); ]])],
-              [libc_have_working_snprintf=yes],
-              [libc_have_working_snprintf=no],
-              [libc_have_working_snprintf=unknown])
-AC_SUBST(libc_have_working_snprintf)
-if test "$libc_have_working_snprintf" = "yes"; then
-  AC_DEFINE(HAVE_WORKING_SNPRINTF, 1, [Define to 1 if the `snprintf' function is sane])
-fi
-AC_MSG_RESULT([$libc_have_working_snprintf])
-
 # check for __attribute__((packed))
 # (sizeof() check is required to avoid false positives if other
 # __attribute__((x)) are supported)
@@ -169,16 +149,23 @@ AC_SUBST(CPPFLAGS)
 AC_SUBST(LDFLAGS)
 AC_SUBST(ASFLAGS)
 
+AC_ARG_WITH(systemdenvfile,
+  [AS_HELP_STRING([--with-systemdenvfile=@<:@FILE|no@:>@],
+    [Path of systemd EnvironmentFile (implies --with-systemdsystemunitdir=yes) [SYSCONFDIR/sysconfig/smartmontools]])],
+  [systemdenvfile=; test "$withval" != "no" && systemdenvfile="$withval"; systemd_default=yes],
+  [systemdenvfile='${sysconfdir}/sysconfig/smartmontools'; systemd_default=auto])
+AC_SUBST(systemdenvfile)
+
 AC_ARG_WITH(systemdsystemunitdir,
   [AS_HELP_STRING([--with-systemdsystemunitdir@<:@=DIR|auto|yes|no@:>@], [Location of systemd service files [auto]])],
-  [], [with_systemdsystemunitdir=auto])
+  [], [with_systemdsystemunitdir=$systemd_default])
 
 systemdsystemunitdir=
 case "$with_systemdsystemunitdir" in
  auto|yes)
    if test -n "$PKG_CONFIG"; then
      AC_MSG_CHECKING([for systemdsystemunitdir])
-     systemdsystemunitdir=`$PKG_CONFIG --variable=systemdsystemunitdir systemd`
+     systemdsystemunitdir=`$PKG_CONFIG --variable=systemdsystemunitdir systemd 2>/dev/null`
      AC_MSG_RESULT([${systemdsystemunitdir:-no}])
    fi
    case "$with_systemdsystemunitdir:$sysconfdir:$systemdsystemunitdir" in
@@ -193,7 +180,7 @@ AC_SUBST(systemdsystemunitdir)
 AM_CONDITIONAL(INSTALL_SYSTEMDUNIT, [test -n "$systemdsystemunitdir"])
 
 AC_ARG_WITH(initscriptdir,
-  [AC_HELP_STRING([--with-initscriptdir@<:@=DIR|auto|yes|no@:>@], [Location of init scripts [auto]])],
+  [AS_HELP_STRING([--with-initscriptdir@<:@=DIR|auto|yes|no@:>@], [Location of init scripts [auto]])],
   [], [with_initscriptdir=auto])
 
 initddir=
@@ -228,7 +215,7 @@ esac
 AC_SUBST(initdfile)
 
 AC_ARG_WITH(docdir,
-  [AC_HELP_STRING([--with-docdir=DIR],[Location of documentation [DATADIR/doc/smartmontools]])],
+  [AS_HELP_STRING([--with-docdir=DIR], [Location of documentation [DATADIR/doc/smartmontools]])],
   [docdir="$withval"],
   [ if test -z "$docdir"; then
       # autoconf 2.5x without '--docdir' support
@@ -238,25 +225,38 @@ AC_ARG_WITH(docdir,
 AC_SUBST(docdir)
 
 AC_ARG_WITH(exampledir,
-  [AC_HELP_STRING([--with-exampledir=DIR],[Location of example scripts [DOCDIR/examplescripts]])],
+  [AS_HELP_STRING([--with-exampledir=DIR], [Location of example scripts [DOCDIR/examplescripts]])],
   [exampledir="$withval"], [exampledir='${docdir}/examplescripts'])
 AC_SUBST(exampledir)
 
 AC_ARG_ENABLE(drivedb,
-  [AC_HELP_STRING([--disable-drivedb],[Disables drive database file])],
+  [AS_HELP_STRING([--disable-drivedb], [Disables drive database file])],
   [], [enable_drivedb=yes])
 
 AC_ARG_WITH(drivedbdir,
-  [AC_HELP_STRING([--with-drivedbdir=DIR],[Location of drive database file (implies --enable-drivedb) [DATADIR/smartmontools]])],
+  [AS_HELP_STRING([--with-drivedbdir=DIR], [Location of drive database file [DATADIR/smartmontools]])],
   [drivedbdir="$withval"; enable_drivedb=yes],
   [drivedbdir=; test "$enable_drivedb" = "yes" && drivedbdir='${datadir}/${PACKAGE}'])
 AC_SUBST(drivedbdir)
 AM_CONDITIONAL(ENABLE_DRIVEDB, [test "$enable_drivedb" = "yes"])
 
-AC_ARG_ENABLE(savestates, [AC_HELP_STRING([--enable-savestates],[Enables default smartd state files])])
+AC_ARG_WITH(smartdscriptdir,
+  [AS_HELP_STRING([--with-smartdscriptdir=DIR], [Location of smartd_warning.sh script [SYSCONFDIR]])],
+  [smartdscriptdir="$withval"], [smartdscriptdir='${sysconfdir}'])
+AC_SUBST(smartdscriptdir)
+
+AC_ARG_WITH(smartdplugindir,
+  [AS_HELP_STRING([--with-smartdplugindir=@<:@DIR|no@:>@],
+    [Location of smartd_warning.sh plugin scripts [SMARTDSCRIPTDIR/smartd_warning.d]])],
+  [smartdplugindir=; test "$withval" != "no" && smartdplugindir="$withval"],
+  [smartdplugindir='${smartdscriptdir}/smartd_warning.d'])
+AC_SUBST(smartdplugindir)
+
+AC_ARG_ENABLE(savestates, [AS_HELP_STRING([--enable-savestates], [Enables default smartd state files])])
 
 AC_ARG_WITH(savestates,
-  [AC_HELP_STRING([--with-savestates=PREFIX],[Prefix for default smartd state files (implies --enable-savestates) [LOCALSTATEDIR/lib/smartmontools/smartd.]])],
+  [AS_HELP_STRING([--with-savestates=PREFIX],
+    [Prefix for default smartd state files (implies --enable-savestates) [LOCALSTATEDIR/lib/smartmontools/smartd.]])],
   [savestates="$withval"; enable_savestates="yes"],
   [savestates=; test "$enable_savestates" = "yes" && savestates='${localstatedir}/lib/${PACKAGE}/smartd.'])
 savestatesdir="${savestates%/*}"
@@ -264,10 +264,11 @@ AC_SUBST(savestates)
 AC_SUBST(savestatesdir)
 AM_CONDITIONAL(ENABLE_SAVESTATES, [test "$enable_savestates" = "yes"])
 
-AC_ARG_ENABLE(attributelog, [AC_HELP_STRING([--enable-attributelog],[Enables default smartd attribute log files])])
+AC_ARG_ENABLE(attributelog, [AS_HELP_STRING([--enable-attributelog], [Enables default smartd attribute log files])])
 
 AC_ARG_WITH(attributelog,
-  [AC_HELP_STRING([--with-attributelog=PREFIX],[Prefix for default smartd attribute log files (implies --enable-attributelog) [LOCALSTATEDIR/lib/smartmontools/attrlog.]])],
+  [AS_HELP_STRING([--with-attributelog=PREFIX],
+    [Prefix for default smartd attribute log files (implies --enable-attributelog) [LOCALSTATEDIR/lib/smartmontools/attrlog.]])],
   [attributelog="$withval"; enable_attributelog="yes"],
   [attributelog=; test "$enable_attributelog" = "yes" && attributelog='${localstatedir}/lib/${PACKAGE}/attrlog.'])
 attributelogdir="${attributelog%/*}"
@@ -276,13 +277,13 @@ AC_SUBST(attributelogdir)
 AM_CONDITIONAL(ENABLE_ATTRIBUTELOG, [test "$enable_attributelog" = "yes"])
 
 AC_ARG_ENABLE(sample,
-  [AC_HELP_STRING([--enable-sample],[Enables appending .sample to the installed smartd rc script and configuration file])],
+  [AS_HELP_STRING([--enable-sample], [Enables appending .sample to the installed smartd rc script and configuration file])],
   [smartd_suffix=; test "$enableval" = "yes" && smartd_suffix=".sample"],
   [smartd_suffix=;])
 AC_SUBST(smartd_suffix)
 
 AC_ARG_WITH(os-deps,
-  [AC_HELP_STRING([--with-os-deps='os_module.o ...'],[Specify OS dependent module(s) [guessed]])],
+  [AS_HELP_STRING([--with-os-deps='os_module.o ...'], [Specify OS dependent module(s) [guessed]])],
   [ for x in $with_os_deps; do
       case $x in
         *.o) ;;
@@ -292,7 +293,7 @@ AC_ARG_WITH(os-deps,
   ],[])
 
 AC_ARG_WITH(selinux,
-  [AC_HELP_STRING([--with-selinux@<:@=yes|no@:>@],[Enables SELinux support [no]])],
+  [AS_HELP_STRING([--with-selinux@<:@=yes|no@:>@], [Enables SELinux support [no]])],
   [ if test "$withval" = "yes"; then
       AC_CHECK_HEADERS([selinux/selinux.h], [], [AC_MSG_ERROR([Missing SELinux header files])])
       AC_CHECK_LIB(selinux, matchpathcon, [], [AC_MSG_ERROR([Missing or incorrect SELinux library files])])
@@ -304,7 +305,7 @@ if test "$with_selinux" = "yes"; then
 fi
 
 AC_ARG_WITH(libcap-ng,
-  [AC_HELP_STRING([--with-libcap-ng@<:@=auto|yes|no@:>@],[Add Libcap-ng support to smartd [auto]])],
+  [AS_HELP_STRING([--with-libcap-ng@<:@=auto|yes|no@:>@], [Add Libcap-ng support to smartd [auto]])],
   [], [with_libcap_ng=auto])
 
 use_libcap_ng=no
@@ -324,6 +325,40 @@ AC_MSG_CHECKING([whether to use libcap-ng])
 AC_SUBST(CAPNG_LDADD)
 AM_CONDITIONAL(ENABLE_CAPABILITIES, [test "$use_libcap_ng" = "yes"])
 AC_MSG_RESULT([$use_libcap_ng])
+
+# Assume broken snprintf only on Windows with MSVCRT (MinGW without ANSI stdio support)
+libc_have_working_snprintf=yes
+
+case "$host" in
+  *-*-mingw*)
+    case " $CPPFLAGS $CXXFLAGS" in
+      *\ -[[DU]]__USE_MINGW_ANSI_STDIO*)
+        ;;
+      *)
+        # Older MinGW do not properly define PRI?64 if __USE_MINGW_ANSI_STDIO is set
+        # Newer MinGW set __USE_MINGW_ANSI_STDIO in first C++ include which may be too late
+        AC_MSG_CHECKING([whether __USE_MINGW_ANSI_STDIO is defined by C++ includes])
+        AC_PREPROC_IFELSE([AC_LANG_SOURCE([[
+          #undef __USE_MINGW_ANSI_STDIO
+          #include <iostream>
+          #ifndef __USE_MINGW_ANSI_STDIO
+            #error false
+          #endif]])],
+        [CXXFLAGS="-D__USE_MINGW_ANSI_STDIO $CXXFLAGS"],
+        [libc_have_working_snprintf=no])
+        AC_MSG_RESULT([$libc_have_working_snprintf])
+        ;;
+    esac ;;
+esac
+
+AC_ARG_WITH(working-snprintf,
+  [AS_HELP_STRING([--with-working-snprintf@<:@=yes|no@:>@],
+    [Function snprintf() handles output truncation as specified by C99 [MinGW:guessed,others:yes]])],
+  [libc_have_working_snprintf=$withval])
+
+if test "$libc_have_working_snprintf" = "yes"; then
+  AC_DEFINE(HAVE_WORKING_SNPRINTF, 1, [Define to 1 if the `snprintf' function is sane])
+fi
 
 if test "$prefix" = "NONE"; then
     dnl no prefix and no mandir, so use ${prefix}/share/man as default
@@ -388,6 +423,7 @@ case "${host}" in
     ;;
   *-*-cygwin*)
     os_deps='os_win32.o dev_areca.o'
+    os_mailer='email'
     os_hostname="'hostname' 'echo "'"${HOSTNAME?unset}"'"'"
     os_dnsdomainname="'dnsdomainname' 'hostname -d' 'echo "'"${USERDNSDOMAIN?unset}"'"'"
     os_nisdomainname=
@@ -548,7 +584,12 @@ case "$host_os" in
     fi
     echo "local drive database:   `eval eval eval echo $sysconfdir`/smart_drivedb.h" >&AS_MESSAGE_FD
     echo "smartd config file:     `eval eval eval echo $sysconfdir`/smartd.conf${smartd_suffix}" >&AS_MESSAGE_FD
-    echo "smartd warning script:  `eval eval eval echo $sysconfdir`/smartd_warning.sh" >&AS_MESSAGE_FD
+    echo "smartd warning script:  `eval eval eval echo $smartdscriptdir`/smartd_warning.sh" >&AS_MESSAGE_FD
+    if test -n "$smartdplugindir"; then
+      echo "smartd plugin path:     `eval eval eval echo $smartdplugindir`" >&AS_MESSAGE_FD
+    else
+      echo "smartd plugin path:     [[disabled]]" >&AS_MESSAGE_FD
+    fi
     if test -n "$initddir"; then
       echo "smartd initd script:    `eval eval eval echo $initddir`/smartd${smartd_suffix}" >&AS_MESSAGE_FD
     elif test -z "$systemdsystemunitdir"; then
@@ -556,6 +597,11 @@ case "$host_os" in
     fi
     if test -n "$systemdsystemunitdir"; then
       echo "smartd systemd file:    `eval eval eval echo $systemdsystemunitdir`/smartd.service" >&AS_MESSAGE_FD
+      if test -n "$systemdenvfile"; then
+        echo "smartd environ file:    `eval eval eval echo $systemdenvfile`" >&AS_MESSAGE_FD
+      else
+        echo "smartd environ file:    [[disabled]]" >&AS_MESSAGE_FD
+      fi
     fi
     if test -n "$savestates"; then
       echo "smartd save files:      `eval eval eval echo $savestates`MODEL-SERIAL.TYPE.state" >&AS_MESSAGE_FD
