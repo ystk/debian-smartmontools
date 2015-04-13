@@ -4,7 +4,7 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  *
  * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  * Copyright (C) 2000 Andre Hedrick <andre@linux-ide.org>
  *
@@ -35,7 +35,7 @@
 #include "utility.h"
 #include "dev_ata_cmd_set.h" // for parsed_ata_device
 
-const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 3825 2013-07-06 21:38:25Z samm2 $"
+const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 3998 2014-10-06 15:20:25Z chrfranke $"
                                  ATACMDS_H_CVSID;
 
 // Print ATA debug messages?
@@ -134,7 +134,7 @@ const format_name_entry format_names[] = {
 const unsigned num_format_names = sizeof(format_names)/sizeof(format_names[0]);
 
 // Table to map old to new '-v' option arguments
-const char * map_old_vendor_opts[][2] = {
+const char * const map_old_vendor_opts[][2] = {
   {  "9,halfminutes"              , "9,halfmin2hour,Power_On_Half_Minutes"},
   {  "9,minutes"                  , "9,min2hour,Power_On_Minutes"},
   {  "9,seconds"                  , "9,sec2hour,Power_On_Seconds"},
@@ -172,7 +172,7 @@ bool parse_attribute_def(const char * opt, ata_vendor_attr_defs & defs,
   int id = 0, n1 = -1, n2 = -1;
   char fmtname[32+1], attrname[32+1];
   if (opt[0] == 'N') {
-    // "N,format"
+    // "N,format[,name]"
     if (!(   sscanf(opt, "N,%32[^,]%n,%32[^,]%n", fmtname, &n1, attrname, &n2) >= 1
           && (n1 == len || n2 == len)))
       return false;
@@ -196,6 +196,7 @@ bool parse_attribute_def(const char * opt, ata_vendor_attr_defs & defs,
   // Split "format[:byteorder]"
   char byteorder[8+1] = "";
   if (strchr(fmtname, ':')) {
+    n1 = n2 = -1;
     if (!(   sscanf(fmtname, "%*[^:]%n:%8[012345rvwz]%n", &n1, byteorder, &n2) >= 1
           && n2 == (int)strlen(fmtname)))
       return false;
@@ -598,8 +599,7 @@ int smartcommandhandler(ata_device * device, smart_command_set command, int sele
                  "probable SAT/USB truncation\n");
         }
         else if (!out.out_regs.is_set()) {
-          pout("SMART STATUS RETURN: incomplete response, ATA output registers missing\n");
-          device->set_err(ENOSYS);
+          device->set_err(ENOSYS, "Incomplete response, ATA output registers missing");
           retval = -1;
         }
         else {
@@ -608,7 +608,7 @@ int smartcommandhandler(ata_device * device, smart_command_set command, int sele
           pout("Please get assistance from %s\n", PACKAGE_HOMEPAGE);
           pout("Register values returned from SMART Status command are:\n");
           print_regs(" ", out.out_regs);
-          device->set_err(EIO);
+          device->set_err(ENOSYS, "Invalid ATA output register values");
           retval = -1;
         }
         break;
@@ -1274,9 +1274,9 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
             uint64_t spans = (num_sectors + oldsize-1) / oldsize;
             uint64_t newsize = (num_sectors + spans-1) / spans;
             uint64_t newstart = num_sectors - newsize, newend = num_sectors - 1;
-            pout("Span %d changed from %"PRIu64"-%"PRIu64" (%"PRIu64" sectors)\n",
+            pout("Span %d changed from %" PRIu64 "-%" PRIu64 " (%" PRIu64 " sectors)\n",
                  i, start, end, oldsize);
-            pout("                 to %"PRIu64"-%"PRIu64" (%"PRIu64" sectors) (%"PRIu64" spans)\n",
+            pout("                 to %" PRIu64 "-%" PRIu64 " (%" PRIu64 " sectors) (%" PRIu64 " spans)\n",
                  newstart, newend, newsize, spans);
             start = newstart; end = newend;
           }
@@ -1293,7 +1293,7 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
       end = num_sectors - 1;
     }
     if (!(start <= end && end < num_sectors)) {
-      pout("Invalid selective self-test span %d: %"PRIu64"-%"PRIu64" (%"PRIu64" sectors)\n",
+      pout("Invalid selective self-test span %d: %" PRIu64 "-%" PRIu64 " (%" PRIu64 " sectors)\n",
         i, start, end, num_sectors);
       return -1;
     }
@@ -1476,11 +1476,12 @@ bool ataReadExtErrorLog(ata_device * device, ata_smart_exterrlog * log,
   if (isbigendian()) {
     swapx(&log->device_error_count);
     swapx(&log->error_log_index);
-
     for (unsigned i = 0; i < nsectors; i++) {
-      for (unsigned j = 0; j < 4; j++)
-        swapx(&log->error_logs[i].commands[j].timestamp);
-      swapx(&log->error_logs[i].error.timestamp);
+      for (unsigned j = 0; j < 4; j++) {
+        for (unsigned k = 0; k < 5; k++)
+           swapx(&log[i].error_logs[j].commands[k].timestamp);
+        swapx(&log[i].error_logs[j].error.timestamp);
+      }
     }
   }
 
@@ -1648,7 +1649,7 @@ int ataSmartTest(ata_device * device, int testtype, bool force,
     int i;
     pout("SPAN         STARTING_LBA           ENDING_LBA\n");
     for (i = 0; i < selargs_io.num_spans; i++)
-      pout("   %d %20"PRId64" %20"PRId64"\n", i,
+      pout("   %d %20" PRId64 " %20" PRId64 "\n", i,
            selargs_io.span[i].start,
            selargs_io.span[i].end);
   }
@@ -1869,7 +1870,8 @@ static ata_attr_raw_format get_default_raw_format(unsigned char id)
   case 196: // Reallocated event count
     return RAWFMT_RAW16_OPT_RAW16;
 
-  case 9:  // Power on hours
+  case 9:   // Power on hours
+  case 240: // Head flying hours
     return RAWFMT_RAW24_OPT_RAW8;
 
   case 190: // Temperature
@@ -1926,6 +1928,33 @@ uint64_t ata_get_attr_raw_value(const ata_smart_attribute & attr,
   return rawvalue;
 }
 
+// Helper functions for RAWFMT_TEMPMINMAX
+static inline int check_temp_word(unsigned word)
+{
+  if (word <= 0x7f)
+    return 0x11; // >= 0, signed byte or word
+  if (word <= 0xff)
+    return 0x01; // < 0, signed byte
+  if (0xff80 <= word)
+    return 0x10; // < 0, signed word
+  return 0x00;
+}
+
+static bool check_temp_range(int t, unsigned char ut1, unsigned char ut2,
+                             int & lo, int & hi)
+{
+  int t1 = (signed char)ut1, t2 = (signed char)ut2;
+  if (t1 > t2) {
+    int tx = t1; t1 = t2; t2 = tx;
+  }
+
+  if (   -60 <= t1 && t1 <= t && t <= t2 && t2 <= 120
+      && !(t1 == -1 && t2 <= 0)                      ) {
+    lo = t1; hi = t2;
+    return true;
+  }
+  return false;
+}
 
 // Format attribute raw value.
 std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
@@ -1967,19 +1996,19 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
   case RAWFMT_RAW48:
   case RAWFMT_RAW56:
   case RAWFMT_RAW64:
-    s = strprintf("%"PRIu64, rawvalue);
+    s = strprintf("%" PRIu64, rawvalue);
     break;
 
   case RAWFMT_HEX48:
-    s = strprintf("0x%012"PRIx64, rawvalue);
+    s = strprintf("0x%012" PRIx64, rawvalue);
     break;
 
   case RAWFMT_HEX56:
-    s = strprintf("0x%014"PRIx64, rawvalue);
+    s = strprintf("0x%014" PRIx64, rawvalue);
     break;
 
   case RAWFMT_HEX64:
-    s = strprintf("0x%016"PRIx64, rawvalue);
+    s = strprintf("0x%016" PRIx64, rawvalue);
     break;
 
   case RAWFMT_RAW16_OPT_RAW16:
@@ -2016,7 +2045,7 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
       int64_t temp = word[0]+(word[1]<<16);
       int64_t tmp1 = temp/60;
       int64_t tmp2 = temp%60;
-      s = strprintf("%"PRIu64"h+%02"PRIu64"m", tmp1, tmp2);
+      s = strprintf("%" PRIu64 "h+%02" PRIu64 "m", tmp1, tmp2);
       if (word[2])
         s += strprintf(" (%u)", word[2]);
     }
@@ -2028,7 +2057,7 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
       int64_t hours = rawvalue/3600;
       int64_t minutes = (rawvalue-3600*hours)/60;
       int64_t seconds = rawvalue%60;
-      s = strprintf("%"PRIu64"h+%02"PRIu64"m+%02"PRIu64"s", hours, minutes, seconds);
+      s = strprintf("%" PRIu64 "h+%02" PRIu64 "m+%02" PRIu64 "s", hours, minutes, seconds);
     }
     break;
 
@@ -2037,7 +2066,7 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
       // 30-second counter
       int64_t hours = rawvalue/120;
       int64_t minutes = (rawvalue-120*hours)/2;
-      s += strprintf("%"PRIu64"h+%02"PRIu64"m", hours, minutes);
+      s += strprintf("%" PRIu64 "h+%02" PRIu64 "m", hours, minutes);
     }
     break;
 
@@ -2056,34 +2085,63 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
     // Temperature
     {
       // Search for possible min/max values
-      // 00 HH 00 LL 00 TT (Hitachi/IBM)
-      // 00 00 HH LL 00 TT (Maxtor, Samsung)
+      // [5][4][3][2][1][0] raw[]
+      // [ 2 ] [ 1 ] [ 0 ]  word[]
+      // xx HH xx LL xx TT (Hitachi/HGST)
+      // xx LL xx HH xx TT (Kingston SSDs)
+      // 00 00 HH LL xx TT (Maxtor, Samsung, Seagate, Toshiba)
       // 00 00 00 HH LL TT (WDC)
-      unsigned char lo = 0, hi = 0;
-      int cnt = 0;
-      for (int i = 1; i < 6; i++) {
-        if (raw[i])
-          switch (cnt++) {
-            case 0:
-              lo = raw[i];
-              break;
-            case 1:
-              if (raw[i] < lo) {
-                hi = lo; lo = raw[i];
-              }
-              else
-                hi = raw[i];
-              break;
-          }
-      }
+      // CC CC HH LL xx TT (WDC, CCCC=over temperature count)
+      // (xx = 00/ff, possibly sign extension of lower byte)
 
-      unsigned char t = raw[0];
-      if (cnt == 0)
-        s = strprintf("%d", t);
-      else if (cnt == 2 && 0 < lo && lo <= t && t <= hi && hi < 128)
-        s = strprintf("%d (Min/Max %d/%d)", t, lo, hi);
+      int t = (signed char)raw[0];
+      int lo = 0, hi = 0;
+
+      int tformat;
+      int ctw0 = check_temp_word(word[0]);
+      if (!word[2]) {
+        if (!word[1] && ctw0)
+          // 00 00 00 00 xx TT
+          tformat = 0;
+        else if (ctw0 && check_temp_range(t, raw[2], raw[3], lo, hi))
+          // 00 00 HL LH xx TT
+          tformat = 1;
+        else if (!raw[3] && check_temp_range(t, raw[1], raw[2], lo, hi))
+          // 00 00 00 HL LH TT
+          tformat = 2;
+        else
+          tformat = -1;
+      }
+      else if (ctw0) {
+        if (   (ctw0 & check_temp_word(word[1]) & check_temp_word(word[2])) != 0x00
+            && check_temp_range(t, raw[2], raw[4], lo, hi)                         )
+          // xx HL xx LH xx TT
+          tformat = 3;
+        else if (   word[2] < 0x7fff
+                 && check_temp_range(t, raw[2], raw[3], lo, hi)
+                 && hi >= 40                                   )
+          // CC CC HL LH xx TT
+          tformat = 4;
+        else
+          tformat = -2;
+      }
       else
-        s = strprintf("%d (%d %d %d %d %d)", t, raw[5], raw[4], raw[3], raw[2], raw[1]);
+        tformat = -3;
+
+      switch (tformat) {
+        case 0:
+          s = strprintf("%d", t);
+          break;
+        case 1: case 2: case 3:
+          s = strprintf("%d (Min/Max %d/%d)", t, lo, hi);
+          break;
+        case 4:
+          s = strprintf("%d (Min/Max %d/%d #%d)", t, lo, hi, word[2]);
+          break;
+        default:
+          s = strprintf("%d (%d %d %d %d %d)", raw[0], raw[5], raw[4], raw[3], raw[2], raw[1]);
+          break;
+      }
     }
     break;
 
@@ -2370,6 +2428,7 @@ int ataReadSCTStatus(ata_device * device, ata_sct_status_response * sts)
     swapx(&sts->function_code);
     swapx(&sts->over_limit_count);
     swapx(&sts->under_limit_count);
+    swapx(&sts->smart_status);
   }
 
   // Check format version
@@ -2380,13 +2439,11 @@ int ataReadSCTStatus(ata_device * device, ata_sct_status_response * sts)
   return 0;
 }
 
-// Read SCT Temperature History Table and Status
+// Read SCT Temperature History Table
 int ataReadSCTTempHist(ata_device * device, ata_sct_temperature_history_table * tmh,
                        ata_sct_status_response * sts)
 {
-  // Check initial status
-  if (ataReadSCTStatus(device, sts))
-    return -1;
+  // Initial SCT status must be provided by caller
 
   // Do nothing if other SCT command is executing
   if (sts->ext_status_code == 0xffff) {
@@ -2491,7 +2548,7 @@ int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool pers
 
   ata_cmd_out out;
   if (!device->ata_pass_through(in, out)) {
-    pout("Write SCT (%cet) XXX Error Recovery Control Command failed: %s\n",
+    pout("Write SCT (%cet) Feature Control Command failed: %s\n",
       (!set ? 'G' : 'S'), device->get_errmsg());
     return -1;
   }
@@ -2729,7 +2786,7 @@ int ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
 
   char msglba[32];
   if (retval < 0 && failing_lba < 0xffffffffffffULL)
-    snprintf(msglba, sizeof(msglba), "%"PRIu64, failing_lba);
+    snprintf(msglba, sizeof(msglba), "%" PRIu64, failing_lba);
   else {
     msglba[0] = '-'; msglba[1] = 0;
   }
@@ -2753,7 +2810,7 @@ int ataPrintSmartSelfTestlog(const ata_smart_selftestlog * data, bool allentries
     pout("Warning: ATA Specification requires self-test log structure revision number = 1\n");
   if (data->mostrecenttest==0){
     if (allentries)
-      pout("No self-tests have been logged.  [To run self-tests, use: smartctl -t]\n\n");
+      pout("No self-tests have been logged.  [To run self-tests, use: smartctl -t]\n");
     return 0;
   }
 

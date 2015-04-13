@@ -3,7 +3,7 @@
 ;
 ; Home page of code is: http://smartmontools.sourceforge.net
 ;
-; Copyright (C) 2006-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
+; Copyright (C) 2006-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 ; You should have received a copy of the GNU General Public License
 ; (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
 ;
-; $Id: installer.nsi 3759 2013-01-26 21:11:02Z chrfranke $
+; $Id: installer.nsi 3912 2014-06-18 19:03:30Z chrfranke $
 ;
 
 
@@ -208,20 +208,23 @@ Section "Uninstaller" UNINST_SECTION
 
   CreateDirectory "$INSTDIR"
 
-  ; Save installation location
-  WriteRegStr HKLM "Software\smartmontools" "Install_Dir" "$INSTDIR"
+  ; Keep old Install_Dir registry entry for GSmartControl
+  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GSmartControl" "InstallLocation"
+  ReadRegStr $1 HKLM "Software\smartmontools" "Install_Dir"
+  StrCmp "$0$1" "" +2 0
+    WriteRegStr HKLM "Software\smartmontools" "Install_Dir" "$INSTDIR"
 
   ; Write uninstall keys and program
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "DisplayName" "smartmontools"
 !ifdef VERSTR
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "DisplayVersion" "${VERSTR}"
 !endif
-  ;WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "Publisher" "smartmontools"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "UninstallString" '"$INSTDIR\uninst-smartmontools.exe"'
-  ;WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLInfoAbout" "http://smartmontools.sourceforge.net/"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "HelpLink"     "http://smartmontools.sourceforge.net/"
-  ;WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLUpdateInfo" "http://sourceforge.net/project/showfiles.php?group_id=64297"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLUpdateInfo" "http://smartmontools-win32.dyndns.org/"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "Publisher"     "smartmontools.org"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLInfoAbout"  "http://www.smartmontools.org/"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "HelpLink"      "http://sourceforge.net/projects/smartmontools/support"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLUpdateInfo" "http://smartmontools.no-ip.org/"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "NoRepair" 1
   WriteUninstaller "uninst-smartmontools.exe"
@@ -313,11 +316,11 @@ Section "Start Menu Shortcuts" MENU_SECTION
     CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\ChangeLog.lnk" "$INSTDIR\doc\ChangeLog.txt"
     CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\COPYING.lnk"   "$INSTDIR\doc\COPYING.txt"
     CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\NEWS.lnk"      "$INSTDIR\doc\NEWS.txt"
-    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\Windows version download page.lnk" "http://smartmontools-win32.dyndns.org/smartmontools/"
+    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\Windows version download page.lnk" "http://smartmontools.no-ip.org/"
   nodoc:
 
   ; Homepage
-  CreateShortCut "$SMPROGRAMS\smartmontools\smartmontools Home Page.lnk" "http://smartmontools.sourceforge.net/"
+  CreateShortCut "$SMPROGRAMS\smartmontools\smartmontools Home Page.lnk" "http://www.smartmontools.org/"
 
   ; drivedb.h update
   IfFileExists "$INSTDIR\bin\update-smart-drivedb.exe" 0 noupdb
@@ -500,6 +503,8 @@ Function .onInit
 
   ; Set default install directories
   StrCmp $INSTDIR "" 0 endinst ; /D=PATH option specified ?
+  ReadRegStr $INSTDIR HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "InstallLocation"
+  StrCmp $INSTDIR "" 0 endinst ; Already installed ?
   ReadRegStr $INSTDIR HKLM "Software\smartmontools" "Install_Dir"
   StrCmp $INSTDIR "" 0 endinst ; Already installed ?
     StrCpy $INSTDIR "$PROGRAMFILES\smartmontools"

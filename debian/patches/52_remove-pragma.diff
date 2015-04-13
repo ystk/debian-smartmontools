@@ -1,7 +1,5 @@
-Index: smartmontools/atacmds.h
-===================================================================
---- smartmontools.orig/atacmds.h	2013-09-05 13:32:05.011972432 +0200
-+++ smartmontools/atacmds.h	2013-09-05 13:32:05.007972432 +0200
+--- a/atacmds.h
++++ b/atacmds.h
 @@ -125,7 +125,6 @@
  
  // Needed parts of the ATA DRIVE IDENTIFY Structure. Those labeled

@@ -5,3 +5,4 @@
 63_removable.patch
 manpage.diff
 kfreebsd.patch
+removesyslogtarget.patch

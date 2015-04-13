@@ -1,7 +1,7 @@
 Smartmontools installation instructions
 =======================================
 
-$Id: INSTALL 3817 2013-06-09 16:59:50Z chrfranke $
+$Id: INSTALL 3935 2014-07-05 16:28:06Z chrfranke $
 
 Please also see the smartmontools home page:
 http://smartmontools.sourceforge.net/
@@ -578,8 +578,8 @@ variable.
 Source and binary packages for Windows are available at
 http://sourceforge.net/projects/smartmontools/files/
 
-Refer to http://sourceforge.net/apps/trac/smartmontools/wiki/Download
-for any additional download and installation instructions.
+Refer to http://www.smartmontools.org/wiki/Download for any additional
+download and installation instructions.
 
 The following files are installed if ./configure has no options:
 
@@ -661,6 +661,7 @@ OPTIONS              DEFAULT                                      AFFECTS
                                                                   Directory for rc.d/init.d/smartd init script
 --with-initscriptdir           auto                               Location of init scripts
 --with-systemdsystemunitdir    auto                               Location of systemd service files
+--with-systemdenvfile ${sysconfdir}/sysconfig/smartmontools       Path of environment file for system service
 --with-docdir         ${prefix}/share/doc/smartmontools           Location of the documentation
 --with-exampledir     ${docdir}/examplescripts                    Location of example scripts
 --enable-sample       --disable-sample                            Adds the string '.sample' to the names of the smartd.conf file and the smartd RC file
@@ -672,10 +673,13 @@ OPTIONS              DEFAULT                                      AFFECTS
                                                                   available, option --capabilities is added to smartd.
 --disable-drivedb     --enable-drivedb                            Disables default drive database file '${drivedbdir}/drivedb.h'
 --with-drivedbdir     ${prefix}/share/smartmontools               Directory for 'drivedb.h' (implies --enable-drivedb)
+--with-smartdscriptdir    ${sysconfdir}                           Directory for 'smartd_warning.sh' script
+--with-smartdplugindir    ${sysconfdir}/smartd_warning.d          Directory for 'smartd_warning.sh' plugin scripts
 --enable-savestates   --disable-savestates                        Enables default smartd state files '${savestates}MODEL-SERIAL.ata.state'
 --with-savestates     ${prefix}/var/lib/smartmontools/smartd.     Prefix for smartd state files (implies --enable-savestates)
 --enable-attributelog --disable-attributelog                      Enables default smartd attribute log files
 --with-attributelog   ${prefix}/var/lib/smartmontools/attrlog.    Prefix for smartd attribute log files (implies --enable-attributelog)
+--with-working-snprintf    MinGW:guessed,others:yes               Function snprintf() handles output truncation as specified by C99
 
 Please note that in previous versions of smartmontools (<= 5.39) the
 default for --with-docdir was

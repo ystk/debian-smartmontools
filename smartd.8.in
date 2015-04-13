@@ -1,8 +1,8 @@
 .ig
 Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
-Copyright (C) 2004-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
+Copyright (C) 2004-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
 
-$Id: smartd.8.in 3799 2013-03-15 17:47:25Z chrfranke $
+$Id: smartd.8.in 3965 2014-07-20 14:46:41Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -25,11 +25,6 @@ California, Santa Cruz. http://ssrc.soe.ucsc.edu/
 .SH SYNOPSIS
 .B smartd [options]
 
-.\" %IF NOT OS Windows
-.SH FULL PATH
-.B /usr/local/sbin/smartd
-
-.\" %ENDIF NOT OS Windows
 .SH PACKAGE VERSION
 CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
 
@@ -46,7 +41,7 @@ The purpose of SMART is to monitor the reliability of the hard drive
 and predict drive failures, and to carry out different types of drive
 self-tests.
 This version of \fBsmartd\fP is compatible with
-ACS-2, ATA8-ACS, ATA/ATAPI-7 and earlier standards
+ACS-3, ACS-2, ATA8-ACS, ATA/ATAPI-7 and earlier standards
 (see \fBREFERENCES\fP below).
 
 \fBsmartd\fP will attempt to enable SMART monitoring on ATA devices
@@ -76,9 +71,9 @@ file \fB/usr/local/etc/smartd.conf\fP (Windows: \fBEXEDIR/smartd.conf\fP).
 If the configuration file is subsequently modified, \fBsmartd\fP
 can be told to re-read the configuration file by sending it a
 \fBHUP\fP signal, for example with the command:
-.fi
+.br
 \fBkillall -HUP smartd\fP.
-.fi
+.br
 .\" %IF OS Windows
 (Windows: See NOTES below.)
 .\" %ENDIF OS Windows
@@ -150,9 +145,7 @@ Disks behind Areca RAID controllers are not included.
 for \fIall\fP possible SMART errors (corresponding to the \fB\'\-a\'\fP
 Directive in the configuration file; see the \fBsmartd.conf\fP(5) man page).
 
-.SH 
-OPTIONS
-
+.SH OPTIONS
 .TP
 .B \-A PREFIX, \-\-attributelog=PREFIX
 Writes \fBsmartd\fP attribute information (normalized and raw
@@ -199,7 +192,7 @@ to perform quick and simple checks without a configuration file.
 .\" %IF ENABLE_CAPABILITIES
 .TP
 .B \-C, \-\-capabilities
-Use \fBcapabilities(7)\fP.
+Use \fBcapabilities\fP(7).
 
 Warning: Mail notification does not work when used.
 .\" %ENDIF ENABLE_CAPABILITIES
@@ -207,7 +200,7 @@ Warning: Mail notification does not work when used.
 .B \-d, \-\-debug
 Runs \fBsmartd\fP in "debug" mode. In this mode, it displays status
 information to STDOUT rather than logging it to SYSLOG and does not
-\fBfork(2)\fP into the background and detach from the controlling
+\fBfork\fP(2) into the background and detach from the controlling
 terminal.  In this mode, \fBsmartd\fP also prints more verbose
 information about what it is doing than when operating in "daemon"
 mode. In this mode, the \fBINT\fP signal (normally generated from a
@@ -224,8 +217,8 @@ debug mode is enabled.
 .B \-D, \-\-showdirectives
 Prints a list (to STDOUT) of all the possible Directives which may
 appear in the configuration file /usr/local/etc/smartd.conf, and then exits.
-These Directives are also described later in this man page. They may
-appear in the configuration file following the device name.
+These Directives are described in the \fBsmartd.conf\fP(5) man page.
+They may appear in the configuration file following the device name.
 .TP
 .B \-h, \-\-help, \-\-usage
 Prints usage message to STDOUT and exits.
@@ -248,7 +241,7 @@ also use:
 .B killall -USR1 smartd
 .fi
 for the same purpose.
-.fi
+.br
 .\" %IF OS Windows
 (Windows: See NOTES below.)
 .\" %ENDIF OS Windows
@@ -261,35 +254,14 @@ then by default messages from \fBsmartd\fP are logged to the facility
 \fIdaemon\fP.
 
 If you would like to have \fBsmartd\fP messages logged somewhere other
-than the default location, this can typically be accomplished with
-(for example) the following steps:
-.RS 7
-.IP \fB[1]\fP 4
-Modify the script that starts \fBsmartd\fP to include the \fBsmartd\fP
-command-line argument \'\-l local3\'.  This tells \fBsmartd\fP to log its
-messages to facility \fBlocal3\fP.
-.IP \fB[2]\fP 4
-Modify the \fBsyslogd\fP configuration file (typically
-\fB/etc/syslog.conf\fP) by adding a line of the form:
-.nf
-\fBlocal3.* /var/log/smartd.log\fP
-.fi
-This tells \fBsyslogd\fP to log all the messages from facility \fBlocal3\fP to
-the designated file: /var/log/smartd.log.
-.IP \fB[3]\fP 4
-Tell \fBsyslogd\fP to re-read its configuration file, typically by
-sending the \fBsyslogd\fP process a \fBSIGHUP\fP hang-up signal.
-.IP \fB[4]\fP 4
-Start (or restart) the \fBsmartd\fP daemon.
-.RE
-.\"  The following two lines are a workaround for a man2html bug.  Please leave them.
-.\" They define a non-existent option; useful because man2html can't correctly reset the margins.
-.TP
-.B \&
+than the default location, include (for example) \'\-l local3\' in its
+start up argument list.
+Tell the syslog daemon to log all messages from facility \fBlocal3\fP
+to (for example) \'/var/log/smartd.log\'.
+
 For more detailed information, please refer to the man pages for
-\fBsyslog.conf\fP, \fBsyslogd\fP, and \fBsyslog\fP.  You may also want
-to modify the log rotation configuration files; see the man pages for
-\fBlogrotate\fP and examine your system\'s /etc/logrotate.conf file.
+the local syslog daemon, typically \fBsyslogd\fP(8), \fBsyslog-ng\fP(8)
+or \fBrsyslogd\fP(8).
 .\" %IF OS Cygwin
 
 Cygwin: If no \fBsyslogd\fP is running, the \'\-l\' option has no effect.
@@ -473,30 +445,25 @@ information for your copy of \fBsmartd\fP to STDOUT and then exits.
 Please include this information if you are reporting bugs or problems.
 
 .SH EXAMPLES
-
-.B
-smartd
-.fi
+.B smartd
+.br
 Runs the daemon in forked mode. This is the normal way to run
 \fBsmartd\fP.
 Entries are logged to SYSLOG.
 
-.B
-smartd -d -i 30
-.fi
+.B smartd -d -i 30
+.br
 Run in foreground (debug) mode, checking the disk status
 every 30 seconds.
 
-.B
-smartd -q onecheck
-.fi
+.B smartd -q onecheck
+.br
 Registers devices, and checks the status of the devices exactly
-once. The exit status (the bash
+once. The exit status (the shell
 .B $?
 variable) will be zero if all went well, and nonzero if no devices
 were detected or some other problem was encountered.
 
-.fi 
 Note that \fBsmartmontools\fP provides a start-up script in
 \fB/usr/local/etc/rc.d/init.d/smartd\fP which is responsible for starting and
 stopping the daemon via the normal init interface.  Using this script,
@@ -508,8 +475,10 @@ and stop it by using the command:
 .nf
 .B /usr/local/etc/rc.d/init.d/smartd stop
 .fi
+
 .SH CONFIGURATION
-The syntax of the smartd.conf(5) file is discussed separately.
+The syntax of the \fBsmartd.conf\fP(5) file is discussed separately.
+
 .SH NOTES
 \fBsmartd\fP
 will make log entries at loglevel 
@@ -642,20 +611,18 @@ checks disks immediately (like \fBSIGUSR1\fP).
 
 .\" %ENDIF OS Windows
 .SH LOG TIMESTAMP TIMEZONE
-
 When \fBsmartd\fP makes log entries, these are time-stamped.  The time
 stamps are in the computer's local time zone, which is generally set
 using either the environment variable \'\fBTZ\fP\' or using a
 time-zone file such as \fB/etc/localtime\fP.  You may wish to change
 the timezone while \fBsmartd\fP is running (for example, if you carry
 a laptop to a new time-zone and don't reboot it).  Due to a bug in the
-\fBtzset(3)\fP function of many unix standard C libraries, the
+\fBtzset\fP(3) function of many unix standard C libraries, the
 time-zone stamps of \fBsmartd\fP might not change.  For some systems,
 \fBsmartd\fP will work around this problem \fIif\fP the time-zone is
 set using \fB/etc/localtime\fP. The work-around \fIfails\fP if the
 time-zone is set using the \'\fBTZ\fP\' variable (or a file that it
 points to).
-
 
 .SH RETURN VALUES
 The return value (exit status) of 
@@ -722,7 +689,34 @@ status is then 128 plus the signal number.  For example if
 \fBsmartd\fP
 is killed by SIGKILL (signal 9) then the exit status is 137.
 
-.PP
+.\" %IF NOT OS Windows
+.SH FILES
+.TP
+.B /usr/local/sbin/smartd
+full path of this executable.
+.TP
+.B /usr/local/etc/smartd.conf
+configuration file (see \fBsmartd.conf\fP(5) man page).
+.TP
+.B /usr/local/etc/smartd_warning.sh
+script run on warnings (see \'\-M exec\' directive on
+\fBsmartd.conf\fP(5) man page).
+.\" %IF ENABLE_SMARTDPLUGINDIR
+.TP
+.B /usr/local/etc/smartd_warning.d/
+plugin directory for smartd warning script (see \'\-m\' directive on
+\fBsmartd.conf\fP(5) man page).
+.\" %ENDIF ENABLE_SMARTDPLUGINDIR
+.\" %IF ENABLE_DRIVEDB
+.TP
+.B /usr/local/share/smartmontools/drivedb.h
+drive database (see \'\-B\' option).
+.\" %ENDIF ENABLE_DRIVEDB
+.TP
+.B /usr/local/etc/smart_drivedb.h
+optional local drive database (see \'\-B\' option).
+
+.\" %ENDIF NOT OS Windows
 .SH AUTHORS
 \fBBruce Allen\fP
 .br
@@ -733,50 +727,51 @@ since 2009)
 .br
 \fBsmartmontools\-support@lists.sourceforge.net\fP
 
-.PP
-.SH CONTRIBUTORS
 The following have made large contributions to smartmontools:
-.nf
+.br
 \fBCasper Dik\fP (Solaris SCSI interface)
+.br
 \fBDouglas Gilbert\fP (SCSI subsystem)
+.br
 \fBGuido Guenther\fP (Autoconf/Automake packaging)
+.br
 \fBGeoffrey Keating\fP (Darwin ATA interface)
+.br
 \fBEduard Martinescu\fP (FreeBSD interface)
+.br
 \fBFr\['e]d\['e]ric L. W. Meunier\fP (Web site and Mailing list)
+.br
 \fBGabriele Pohl\fP (Web site and Wiki, conversion from CVS to SVN)
+.br
 \fBKeiji Sawada\fP (Solaris ATA interface)
+.br
 \fBManfred Schwarb\fP (Drive database)
+.br
 \fBSergey Svishchev\fP (NetBSD interface)
+.br
 \fBDavid Snyder and Sergey Svishchev\fP (OpenBSD interface)
+.br
 \fBPhil Williams\fP (User interface and drive database)
+.br
 \fBShengfeng Zhou\fP (Linux/FreeBSD HighPoint RocketRAID interface)
-.fi
+.br
 Many other individuals have made smaller contributions and corrections.
 
-.PP
-.SH CREDITS
-.fi
-This code was derived from the smartsuite package, written by Michael
-Cornwell, and from the previous UCSC smartsuite package.  It extends
-these to cover ATA-5 disks.  This code was originally developed as a
+The first smartmontools code was derived from the smartsuite package,
+written by Michael Cornwell, and from the previous UCSC smartsuite package.
+This code was originally developed as a
 Senior Thesis by Michael Cornwell at the Concurrent Systems Laboratory
 (now part of the Storage Systems Research Center), Jack Baskin School
 of Engineering, University of California, Santa
 Cruz. \fBhttp://ssrc.soe.ucsc.edu/\fP .
-.SH
-HOME PAGE FOR SMARTMONTOOLS: 
-.fi
-Please see the following web site for updates, further documentation, bug
-reports and patches: \fBhttp://smartmontools.sourceforge.net/\fP
 
-.SH
-SEE ALSO:
-\fBsmartd.conf\fP(5), \fBsmartctl\fP(8), \fBsyslogd\fP(8),
-\fBsyslog.conf\fP(5), \fBbadblocks\fP(8), \fBide\-smart\fP(8), \fBregex\fP(7).
+.SH SEE ALSO
+\fBsmartd.conf\fP(5), \fBsmartctl\fP(8), \fBupdate-smart-drivedb\fP(8).
 
-.SH
-REFERENCES FOR SMART
-.fi
+.SH REFERENCES
+Please see the following web site for more info:
+\fBhttp://smartmontools.sourceforge.net/\fP
+
 An introductory article about smartmontools is \fIMonitoring Hard
 Disks with SMART\fP, by Bruce Allen, Linux Journal, January 2004,
 pages 74-77. This is \fBhttp://www.linuxjournal.com/article/6983\fP
@@ -788,15 +783,12 @@ volume of the \'AT Attachment with Packet Interface-7\' (ATA/ATAPI-7)
 specification Revision 4b.  This documents the SMART functionality which the
 \fBsmartmontools\fP utilities provide access to.
 
-.fi
 The functioning of SMART was originally defined by the SFF-8035i
 revision 2 and the SFF-8055i revision 1.4 specifications.  These are
 publications of the Small Form Factors (SFF) Committee.
 
 Links to these and other documents may be found on the Links page of the
-\fBsmartmontools\fP Wiki at
-\fBhttp://sourceforge.net/apps/trac/smartmontools/wiki/Links\fP .
+\fBsmartmontools\fP Wiki at \fBhttp://www.smartmontools.org/wiki/Links\fP .
 
-.SH
-SVN ID OF THIS PAGE:
-$Id: smartd.8.in 3799 2013-03-15 17:47:25Z chrfranke $
+.SH SVN ID OF THIS PAGE
+$Id: smartd.8.in 3965 2014-07-20 14:46:41Z chrfranke $

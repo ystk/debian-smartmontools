@@ -49,7 +49,7 @@
 #include "dev_interface.h"
 #include "utility.h"
 
-const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 3820 2013-06-17 08:45:10Z samm2 $"
+const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 3915 2014-06-19 18:24:57Z dpgilbert $"
   SCSICMDS_H_CVSID;
 
 // Print SCSI debug messages?
@@ -60,7 +60,7 @@ supported_vpd_pages * supported_vpd_pages_p = NULL;
 
 supported_vpd_pages::supported_vpd_pages(scsi_device * device) : num_valid(0)
 {
-    unsigned char b[0x1fc];     /* size chosen for old INQUIRY command */
+    unsigned char b[0xfc];     /* pre SPC-3 INQUIRY max response size */
     int n;
 
     memset(b, 0, sizeof(b));
@@ -1441,12 +1441,13 @@ scsiSetExceptionControlAndWarning(scsi_device * device, int enabled,
     if (offset < 0)
         return -EINVAL;
     memcpy(rout, iecp->raw_curr, SCSI_IECMP_RAW_LEN);
+    /* mask out DPOFUA device specific (disk) parameter bit */
     if (10 == iecp->modese_len) {
         resp_len = (rout[0] << 8) + rout[1] + 2;
-        rout[3] &= 0xef;    /* for disks mask out DPOFUA bit */
+        rout[3] &= 0xef;
     } else {
         resp_len = rout[0] + 1;
-        rout[2] &= 0xef;    /* for disks mask out DPOFUA bit */
+        rout[2] &= 0xef;
     }
     sp = (rout[offset] & 0x80) ? 1 : 0; /* PS bit becomes 'SELECT's SP bit */
     if (enabled) {
@@ -2479,7 +2480,8 @@ scsiFetchControlGLTSD(scsi_device * device, int modese_len, int current)
  * RIGID_DISK_DRIVE_GEOMETRY_PAGE mode page. */
 
 int
-scsiGetRPM(scsi_device * device, int modese_len, int * form_factorp)
+scsiGetRPM(scsi_device * device, int modese_len, int * form_factorp,
+           int * haw_zbcp)
 {
     int err, offset, speed;
     UINT8 buff[64];
@@ -2492,10 +2494,14 @@ scsiGetRPM(scsi_device * device, int modese_len, int * form_factorp)
         speed = (buff[4] << 8) + buff[5];
         if (form_factorp)
             *form_factorp = buff[7] & 0xf;
+        if (haw_zbcp)
+            *haw_zbcp = !!(0x10 & buff[8]);
         return speed;
     }
     if (form_factorp)
         *form_factorp = 0;
+    if (haw_zbcp)
+        *haw_zbcp = 0;
     if (modese_len <= 6) {
         if ((err = scsiModeSense(device, RIGID_DISK_DRIVE_GEOMETRY_PAGE, 0, pc,
                                  buff, sizeof(buff)))) {
@@ -2599,12 +2605,13 @@ scsiGetSetCache(scsi_device * device,  int modese_len, short int * wcep,
           buff[offset + 2] &= 0xfe; // clear bit
     }
 
+    /* mask out DPOFUA device specific (disk) parameter bit */
     if (10 == modese_len) {
         resp_len = (buff[0] << 8) + buff[1] + 2;
-        buff[3] &= 0xef;    /* for disks mask out DPOFUA bit */
+        buff[3] &= 0xef;
     } else {
         resp_len = buff[0] + 1;
-        buff[2] &= 0xef;    /* for disks mask out DPOFUA bit */
+        buff[2] &= 0xef;
     }
     sp = 0; /* Do not change saved values */
     if (10 == modese_len)
@@ -2667,14 +2674,15 @@ scsiSetControlGLTSD(scsi_device * device, int enabled, int modese_len)
     if (err)
         return err;
     if (0 == (ch_buff[offset + 2] & 2))
-        return SIMPLE_ERR_BAD_PARAM;  /* GLTSD bit not chageable */
+        return SIMPLE_ERR_BAD_PARAM;  /* GLTSD bit not changeable */
 
+    /* mask out DPOFUA device specific (disk) parameter bit */
     if (10 == modese_len) {
         resp_len = (buff[0] << 8) + buff[1] + 2;
-        buff[3] &= 0xef;    /* for disks mask out DPOFUA bit */
+        buff[3] &= 0xef;    
     } else {
         resp_len = buff[0] + 1;
-        buff[2] &= 0xef;    /* for disks mask out DPOFUA bit */
+        buff[2] &= 0xef;
     }
     sp = (buff[offset] & 0x80) ? 1 : 0; /* PS bit becomes 'SELECT's SP bit */
     if (enabled)

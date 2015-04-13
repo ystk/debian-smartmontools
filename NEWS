@@ -1,9 +1,33 @@
 smartmontools NEWS
 ------------------
-$Id: NEWS 3841 2013-07-26 17:38:57Z chrfranke $
+$Id: NEWS 3979 2014-08-15 11:09:41Z samm2 $
 
 The most up-to-date version of this file is:
 http://sourceforge.net/p/smartmontools/code/HEAD/tree/trunk/smartmontools/NEWS
+
+- darwin: '-S' command implemented, '-l devstat' should work now
+
+Date 2014-07-26
+Summary: smartmontools release 6.3
+-----------------------------------------------------------
+- smartctl: Fixed bogus error messages from '-g/-s wcreorder'.
+- smartctl prints ATA form factor.
+- SCSI: Improved support of modern disks (SAS SSDs).
+- SCSI: Fixed sense data noise from old disks.
+- update-smart-drivedb man page.
+- configure option '--with-smartdscriptdir'.
+- configure option '--with-smartdplugindir'.
+- configure option '--with-systemdenvfile'.
+- configure option '--with-working-snprintf'.
+- Removed build time stamps to support reproducible builds.
+- Compile fixes for C++11.
+- HDD, SSD and USB additions to drive database.
+- Linux: Support for controllers behind AACRAID driver.
+- Linux: Fixed DEVICESCAN max path count.
+- FreeBSD: Fixed possible crash caused by wrong SCSI error handling.
+- FreeBSD: Compile fix for kFreeBSD.
+- Windows: Reworked CSMI port scanning.
+- QNX: Compile fix.
 
 Date 2013-07-26
 Summary: smartmontools release 6.2
@@ -209,7 +233,7 @@ Summary: smartmontools release 5.39 (UNSTABLE/EXPERIMENTAL)
 - Sourcecode repository moved from CVS to SVN
 - Support for USB devices with Cypress, JMicron and Sunplus USB bridges
 - USB device type autodetection for some devices on Linux, Windows and FreeBSD
-  (http://sourceforge.net/apps/trac/smartmontools/wiki/Supported_USB-Devices)
+  (http://www.smartmontools.org/wiki/Supported_USB-Devices)
 - Support for Areca controllers on Linux
 - Support for MegaRAID controllers on Linux
 - Support for HighPoint RocketRAID controllers on FreeBSD

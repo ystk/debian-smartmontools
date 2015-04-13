@@ -3,8 +3,8 @@ Section: utils
 Priority: optional
 Maintainer: Giuseppe Iuculano <iuculano@debian.org>
 Uploaders: Florian Maier <contact@marsmenschen.com>
-Build-Depends: debhelper (>= 7), libcam-dev [kfreebsd-any], freebsd-glue [kfreebsd-any], automake1.11, autoconf, libcap-ng-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386 !sparc !avr32], libselinux1-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libusb2-dev [kfreebsd-i386 kfreebsd-amd64], hardening-wrapper
-Standards-Version: 3.9.4
+Build-Depends: debhelper (>= 7), libcam-dev [kfreebsd-any], freebsd-glue [kfreebsd-any], automake1.11, autoconf, libcap-ng-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386 !sparc !avr32], libselinux1-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libusb2-dev [kfreebsd-i386 kfreebsd-amd64], dh-systemd (>= 1.13)
+Standards-Version: 3.9.5
 Vcs-Git: git://anonscm.debian.org/collab-maint/smartmontools.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/smartmontools.git
 Homepage: http://smartmontools.sourceforge.net/

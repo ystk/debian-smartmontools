@@ -1,8 +1,8 @@
 .ig
 Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
-Copyright (C) 2004-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
+Copyright (C) 2004-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
 
-$Id: smartctl.8.in 3832 2013-07-20 14:49:31Z chrfranke $
+$Id: smartctl.8.in 3965 2014-07-20 14:46:41Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -25,11 +25,6 @@ California, Santa Cruz. http://ssrc.soe.ucsc.edu/
 .SH SYNOPSIS
 .B smartctl [options] device
 
-.\" %IF NOT OS Windows
-.SH FULL PATH
-.B /usr/local/sbin/smartctl
-
-.\" %ENDIF NOT OS Windows
 .SH PACKAGE VERSION
 CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
 
@@ -47,7 +42,7 @@ and predict drive failures, and to carry out different types of drive
 self-tests.
 \fBsmartctl\fP also supports some features not related to SMART.
 This version of \fBsmartctl\fP is compatible with
-ACS-2, ATA8-ACS, ATA/ATAPI-7 and earlier standards
+ACS-3, ACS-2, ATA8-ACS, ATA/ATAPI-7 and earlier standards
 (see \fBREFERENCES\fP below).
 
 \fBsmartctl\fP also provides support for polling TapeAlert messages
@@ -164,9 +159,7 @@ values in base 10 (decimal), but some values are displayed in base 16
 displayed with a leading \fB"0x"\fP, for example: "0xff". This man
 page follows the same convention.
 
-.PP
 .SH OPTIONS
-.PP
 The options are grouped below into several categories.  \fBsmartctl\fP
 will execute the corresponding commands in the order: INFORMATION,
 ENABLE/DISABLE, DISPLAY DATA, RUN/ABORT TESTS.
@@ -195,8 +188,7 @@ drive model family may also be printed. If \'\-n\' (see below) is
 specified, the power mode of the drive is printed.
 .TP
 .B \-\-identify[=[w][nvb]]
-[ATA only] [NEW EXPERIMENTAL SMARTCTL FEATURE] Prints an annotated
-table of the IDENTIFY DEVICE data.
+[ATA only] Prints an annotated table of the IDENTIFY DEVICE data.
 By default, only valid words (words not equal to 0x0000 or 0xffff)
 and nonzero bits and bit fields are printed.
 This can be changed by the optional argument which consists of one or
@@ -375,10 +367,27 @@ It is possible to set RAID device name as /dev/bus/N, where N is a SCSI bus
 number.
 
 The following entry in /proc/devices must exist:
-.fi
+.br
 For PERC2/3/4 controllers: \fBmegadevN\fP
-.fi
+.br
 For PERC5/6 controllers: \fBmegaraid_sas_ioctlN\fP
+
+.I aacraid,H,L,ID
+\- [Linux only] [NEW EXPERIMENTAL SMARTCTL FEATURE]
+the device consists of one or more SCSI/SAS disks connected to an AacRaid controller.
+The non-negative integers H,L,ID (Host number, Lun, ID) denote which disk
+on the controller is monitored.
+Use syntax such as:
+.nf
+\fBsmartctl \-a \-d aacraid,0,0,66 /dev/sda\fP
+.fi
+.nf
+\fBsmartctl \-a \-d aacraid,0,0,66 /dev/sdb\fP
+.fi
+The L and ID numbers of a disk can be found in /proc/scsi/scsi
+
+The following entry in /proc/devices must exist: \fBaac\fP.
+Character device nodes /dev/aacH (H=Host number) are created if required.
 
 .\" %ENDIF OS Linux
 .\" %IF OS FreeBSD Linux
@@ -736,11 +745,7 @@ Note that the SMART automatic offline test command is listed as
 "Obsolete" in every version of the ATA and ATA/ATAPI Specifications.
 It was originally part of the SFF-8035i Revision 2.0 specification,
 but was never part of any ATA specification.  However it is
-implemented and used by many vendors. [Good documentation can be found
-in IBM\'s Official Published Disk Specifications.  For example the IBM
-Travelstar 40GNX Hard Disk Drive Specifications (Revision 1.1, 22
-April 2002, Publication # 1541, Document S07N-7715-02) page 164. You
-can also read the SFF-8035i Specification -- see REFERENCES below.]
+implemented and used by many vendors.
 You can tell if automatic offline testing is supported by seeing if
 this command enables and disables it, as indicated by the \'Auto
 Offline Data Collection\' part of the SMART capabilities report
@@ -1098,13 +1103,12 @@ specification.  Some commands are not defined in any version of the
 ATA specification but are in common use nonetheless; these are marked
 \fB[NS]\fP, meaning non-standard.
 
-The ATA Specification (ATA-5 Revision 1c, Section 8.41.6.8.2) says:
-\fB"Error log structures shall include UNC errors, IDNF errors for
-which the address requested was valid, servo errors, write fault
-errors, etc.  Error log data structures shall not include errors
-attributed to the receipt of faulty commands such as command codes not
-implemented by the device or requests with invalid parameters or
-invalid addresses."\fP The definitions of these terms are:
+The ATA Specification (ATA ACS-2 Revision 7, Section A.7.1) says:
+\fB"Error log data structures shall include, but are not limited to,
+Uncorrectable errors, ID Not Found errors for which the LBA requested was
+valid, servo errors, and write fault errors.  Error log data structures
+shall not include errors attributed to the receipt of faulty commands."\fP
+The definitions of these terms are:
 .br
 \fBUNC\fP (\fBUNC\fPorrectable): data is uncorrectable.  This refers
 to data which has been read from the disk, but for which the Error
@@ -1142,8 +1146,7 @@ log (see \'\-l error\' above), it provides sufficient space to log
 the contents of the 48-bit LBA register set introduced with ATA-6.
 It also supports logs with more than one sector.  Each sector holds
 up to 4 log entries. The actual number of log sectors is vendor
-specific, typical values for HDD are 2 (Samsung), 5 (Seagate) or
-6 (WD).
+specific.
 
 Only the 8 most recent error log entries are printed by default.
 This number can be changed by the optional parameter NUM.
@@ -1197,7 +1200,7 @@ test terminology).
 Log address 0x07). Unlike the SMART self-test log (see \'\-l selftest\'
 above), it supports 48-bit LBA and logs with more than one sector.
 Each sector holds up to 19 log entries. The actual number of log sectors
-is vendor specific, typical values are 1 (Seagate) or 2 (Samsung).
+is vendor specific.
 
 Only the 25 most recent log entries are printed by default. This number
 can be changed by the optional parameter NUM.
@@ -1270,7 +1273,7 @@ is vendor specific, typical values are 1, 2, or 5 minutes.
 .I scterc[,READTIME,WRITETIME]
 \- [ATA only] prints values and descriptions of the SCT Error Recovery
 Control settings. These are equivalent to TLER (as used by Western
-Digital), CCTL (as used by Samsung and Hitachi) and ERC (as used by
+Digital), CCTL (as used by Samsung and Hitachi/HGST) and ERC (as used by
 Seagate). READTIME and WRITETIME arguments (deciseconds) set the
 specified values. Values of 0 disable the feature, other values less
 than 65 are probably not supported. For RAID configurations, this is
@@ -1281,9 +1284,7 @@ typically set to 70,70 deciseconds.
 log pages (General Purpose Log address 0x04).  If no PAGE number is specified,
 entries from all supported pages are printed.  If PAGE 0 is specified,
 the list of supported pages is printed.  Device Statistics was
-introduced in ACS-2 and is only supported by some recent devices
-(e.g. Hitachi 7K3000, Intel 320, 330, 520 and 710 Series SSDs, Crucial/Micron
-m4 SSDs).
+introduced in ACS-2 and is only supported by some recent devices.
 
 .I sataphy[,reset]
 \- [SATA only] prints values and descriptions of the SATA Phy Event
@@ -1525,10 +1526,6 @@ is not reset if uncorrectable sectors are reallocated
 .I 220,temp
 \- same as:
 .I 220,tempminmax,Temperature_Celsius.
-
-Note: a table of hard drive models, listing which Attribute
-corresponds to temperature, can be found at:
-\fBhttp://www.guzu.net/linux/hddtemp.db\fP
 .TP
 .B \-F TYPE, \-\-firmwarebug=TYPE
 [ATA only] Modifies the behavior of \fBsmartctl\fP to compensate for some
@@ -1538,7 +1535,7 @@ multiple times.  The valid arguments are:
 .I none
 \- Assume that the device firmware obeys the ATA specifications.  This
 is the default, unless the device has presets for \'\-F\' in the
-drive database.  Using this option on the command line will over-ride any
+drive database.  Using this option on the command line will override any
 preset values.
 
 .I nologdir
@@ -1573,7 +1570,7 @@ execution status (see options \'\-c\' or \'\-a\' above) accordingly.
 
 .I xerrorlba
 \- Fixes LBA byte ordering in Extended Comprehensive SMART error log.
-Some disk use little endian byte ordering instead of ATA register
+Some disks use little endian byte ordering instead of ATA register
 ordering to specifiy the LBA addresses in the log entries.
 
 .I swapid
@@ -1584,15 +1581,6 @@ firmware version) returned by some buggy device drivers.
 [ATA only] Specifies whether \fBsmartctl\fP should use any preset options
 that are available for this drive. By default, if the drive is recognized
 in the \fBsmartmontools\fP database, then the presets are used.
-
-\fBsmartctl\fP can automatically set appropriate options for known
-drives.  For example, the Maxtor 4D080H4 uses Attribute 9 to stores
-power-on time in minutes whereas most drives use that Attribute to
-store the power-on time in hours.  The command-line option \'\-v
-9,minutes\' ensures that \fBsmartctl\fP correctly interprets Attribute
-9 in this case, but that option is preset for the Maxtor 4D080H4 and
-so need not be specified by the user on the \fBsmartctl\fP command
-line.
 
 The argument
 .I show
@@ -1926,7 +1914,7 @@ T13/1699-D Revision 6a (ATA8-ACS).  Note that the subcommands
 \fBWARNING: Only run subcommands documented by the vendor of the
 device.\fP
 
-Example for Intel (X18/X25-M G2, 320, 520 and 710 Series) SSDs only:
+Example for some Intel SSDs only:
 The subcommand 0x40 (\'\-t vendor,0x40\') clears the timed workload
 related SMART attributes (226, 227, 228).  Note that the raw values of
 these attributes are held at 65535 (0xffff) until the workload timer
@@ -1951,7 +1939,7 @@ mounted partitions!\fP
 Aborts non-captive SMART Self Tests.  Note that this
 command will abort the Offline Immediate Test routine only if your
 disk has the "Abort Offline collection upon new command" capability.
-.PP
+
 .SH ATA, SCSI command sets and SAT
 In the past there has been a clear distinction between storage devices
 that used the ATA and SCSI command sets. This distinction was often
@@ -1995,7 +1983,7 @@ disks from a distant OS is a challenge for smartmontools. Another
 approach is running a tool like smartmontools inside the RAID 1 box (e.g.
 a Network Attached Storage (NAS) box) and fetching the logs via a
 browser. 
-.PP
+
 .SH EXAMPLES
 .nf
 .B smartctl \-a /dev/hda
@@ -2124,7 +2112,7 @@ device is restored.
 .fi
 Examine all SMART data for the first SCSI disk connected to a cciss
 RAID controller card.
-.PP
+
 .SH RETURN VALUES
 The return values of \fBsmartctl\fP are defined by a bitmask.  If all
 is well with the disk, the return value (exit status) of
@@ -2165,8 +2153,8 @@ The device self-test log contains records of errors.
 self-test are ignored.
 .PP
 To test within the shell for whether or not the different bits are
-turned on or off, you can use the following type of construction (this
-is bash syntax):
+turned on or off, you can use the following type of construction
+(which should work with any POSIX compatible shell):
 .nf
 .B smartstat=$(($? & 8))
 .fi
@@ -2175,23 +2163,37 @@ This looks at only at bit 3 of the exit status
 (since 8=2^3).  The shell variable
 $smartstat will be nonzero if SMART status check returned "disk
 failing" and zero otherwise.
-
-This bash script prints all status bits:
+.PP
+This shell script prints all status bits:
 .nf
-status=$?
-for ((i=0; i<8; i++)); do
-  echo "Bit $i: $((status & 2**i && 1))"
+val=$?; mask=1
+for i in 0 1 2 3 4 5 6 7; do
+  echo "Bit $i: $(((val & mask) && 1))"
+  mask=$((mask << 1))
 done
 .fi
 
-.PP
+.\" %IF NOT OS Windows
+.SH FILES
+.TP
+.B /usr/local/sbin/smartctl
+full path of this executable.
+.\" %IF ENABLE_DRIVEDB
+.TP
+.B /usr/local/share/smartmontools/drivedb.h
+drive database (see \'\-B\' option).
+.\" %ENDIF ENABLE_DRIVEDB
+.TP
+.B /usr/local/etc/smart_drivedb.h
+optional local drive database (see \'\-B\' option).
+
+.\" %ENDIF NOT OS Windows
 .SH NOTES
 The TapeAlert log page flags are cleared for the initiator when the
 page is read. This means that each alert condition is reported only
 once by \fBsmartctl\fP for each initiator for each activation of the
 condition.
 
-.PP
 .SH AUTHORS
 \fBBruce Allen\fP
 .br
@@ -2202,49 +2204,53 @@ since 2009)
 .br
 \fBsmartmontools\-support@lists.sourceforge.net\fP
 
-.PP
-.SH CONTRIBUTORS
 The following have made large contributions to smartmontools:
-.nf
+.br
 \fBCasper Dik\fP (Solaris SCSI interface)
+.br
 \fBDouglas Gilbert\fP (SCSI subsystem)
+.br
 \fBGuido Guenther\fP (Autoconf/Automake packaging)
+.br
 \fBGeoffrey Keating\fP (Darwin ATA interface)
+.br
 \fBEduard Martinescu\fP (FreeBSD interface)
+.br
 \fBFr\['e]d\['e]ric L. W. Meunier\fP (Web site and Mailing list)
+.br
 \fBGabriele Pohl\fP (Web site and Wiki, conversion from CVS to SVN)
+.br
 \fBKeiji Sawada\fP (Solaris ATA interface)
+.br
 \fBManfred Schwarb\fP (Drive database)
+.br
 \fBSergey Svishchev\fP (NetBSD interface)
+.br
 \fBDavid Snyder and Sergey Svishchev\fP (OpenBSD interface)
+.br
 \fBPhil Williams\fP (User interface and drive database)
+.br
 \fBYuri Dario\fP (OS/2, eComStation interface)
+.br
 \fBShengfeng Zhou\fP (Linux/FreeBSD HighPoint RocketRAID interface)
-.fi
+.br
 Many other individuals have made smaller contributions and corrections.
 
-.PP
-.SH CREDITS
-.fi
-This code was derived from the smartsuite package, written by Michael
-Cornwell, and from the previous UCSC smartsuite package.  It extends
-these to cover ATA-5 disks.  This code was originally developed as a
+The first smartmontools code was derived from the smartsuite package,
+written by Michael Cornwell, and from the previous UCSC smartsuite package.
+This code was originally developed as a
 Senior Thesis by Michael Cornwell at the Concurrent Systems Laboratory
 (now part of the Storage Systems Research Center), Jack Baskin School
 of Engineering, University of California, Santa
 Cruz. \fBhttp://ssrc.soe.ucsc.edu/\fP .
-.SH
-HOME PAGE FOR SMARTMONTOOLS: 
-.fi
-Please see the following web site for updates, further documentation, bug
-reports and patches: \fBhttp://smartmontools.sourceforge.net/\fP
 
-.SH
-SEE ALSO:
-\fBsmartd\fP(8), \fBbadblocks\fP(8), \fBide\-smart\fP(8).
-.SH
-REFERENCES FOR SMART
-.fi
+.SH SEE ALSO
+\fBsmartd\fP(8), \fBupdate-smart-drivedb\fP(8).
+
+.SH REFERENCES
+Please see the following web site for more info:
+\fBhttp://smartmontools.sourceforge.net/\fP
+
 An introductory article about smartmontools is \fIMonitoring Hard
 Disks with SMART\fP, by Bruce Allen, Linux Journal, January 2004,
 pages 74-77. This is \fBhttp://www.linuxjournal.com/article/6983\fP
@@ -2256,15 +2262,12 @@ volume of the \'AT Attachment with Packet Interface-7\' (ATA/ATAPI-7)
 specification Revision 4b.  This documents the SMART functionality which the
 \fBsmartmontools\fP utilities provide access to.
 
-.fi
 The functioning of SMART was originally defined by the SFF-8035i
 revision 2 and the SFF-8055i revision 1.4 specifications.  These are
 publications of the Small Form Factors (SFF) Committee.
 
 Links to these and other documents may be found on the Links page of the
-\fBsmartmontools\fP Wiki at
-\fBhttp://sourceforge.net/apps/trac/smartmontools/wiki/Links\fP .
+\fBsmartmontools\fP Wiki at \fBhttp://www.smartmontools.org/wiki/Links\fP .
 
-.SH
-SVN ID OF THIS PAGE:
-$Id: smartctl.8.in 3832 2013-07-20 14:49:31Z chrfranke $
+.SH SVN ID OF THIS PAGE
+$Id: smartctl.8.in 3965 2014-07-20 14:46:41Z chrfranke $

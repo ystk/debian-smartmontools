@@ -1,3 +1,38 @@
+smartmontools (6.3+svn4002-2) unstable; urgency=low
+
+  * [12d5f9d] Correct maintscript syntax (Closes: #766178)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Tue, 21 Oct 2014 13:30:40 +0200
+
+smartmontools (6.3+svn4002-1) unstable; urgency=low
+
+  * [03a62f0] Set EnvironmentFile=-/etc/default/smartmontools in smartd.service
+    (Closes: #764136)
+  * [59c55ae] Remove /etc/smartd_warning.sh (Closes: #765519)
+  * [1d06b80] Imported Upstream version 6.3+svn4002
+  * [1aabc0a] Do not build-depends on hardening-wrapper,
+    instead use the new buildflags.mk file
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Fri, 17 Oct 2014 15:55:45 +0200
+
+smartmontools (6.3+svn3990-1) unstable; urgency=low
+
+  * [d2e702c] Imported Upstream version 6.3+svn3990
+    - Support for TOSHIBA STOR.E Plus 2 TB (0x0480:0xa00a) (Closes: #734395)
+  * [901fe9c] Refreshed patches
+  * [9804b75] Included systemd service file.
+    Thanks to Michael Stapelberg (Closes: #639631, #757973, #762039)
+  * [a64e022] Remove the obsolete bug helper (Closes: #757975)
+  * [3478a98] moved smartd_warning.sh in
+    /usr/share/smartmontools/smard_warning.sh (Closes: #710815)
+  * [a5a9d5b] Removed source less os_solaris_ata.s (Closes: #729842)
+  * [fb337c9] Update to Standards-Version 3.9.5, no changes need
+  * [6a8e2b9] smartd.service.in: declaring After=syslog.target is unnecessary
+    by now because syslog is socket-activated and will therefore be started
+    when needed
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sun, 05 Oct 2014 10:58:13 +0200
+
 smartmontools (6.2+svn3841-1.2) unstable; urgency=medium
 
   * Non-maintainer upload.
